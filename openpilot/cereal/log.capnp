@@ -2396,6 +2396,16 @@ struct Sentinel {
 struct UIDebug {
   cpuTimeMillis @0 :Float32;
   frameTimeMillis @1 :Float32;
+  trafficPlanAvailable @2 :Bool;
+  trafficPlanMonoTime @3 :UInt64;
+  trafficPlanLightState @4 :UInt8;
+  trafficPlanPhase @5 :UInt8;
+  trafficDisplayFrame @6 :UInt64;
+  trafficDisplayedVisible @7 :Bool;
+  trafficDisplayedHasSignal @8 :Bool;
+  trafficDisplayedLightState @9 :UInt8;
+  trafficDisplayedPhase @10 :UInt8;
+  trafficDisplayedControlActive @11 :Bool;
 }
 
 struct ManagerState {
@@ -2648,7 +2658,7 @@ struct Event {
     carStateSP @114 :Custom.CarStateSP;
     liveMapDataSP @115 :Custom.LiveMapDataSP;
     modelDataV2SP @116 :Custom.ModelDataV2SP;
-    customReserved10 @136 :Custom.CustomReserved10;
+    trafficRadarState @136 :Custom.TrafficRadarState;
     customReserved11 @137 :Custom.CustomReserved11;
     customReserved12 @138 :Custom.CustomReserved12;
     customReserved13 @139 :Custom.CustomReserved13;

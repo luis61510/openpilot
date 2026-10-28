@@ -12,6 +12,10 @@ the same commit so the bump shows up in code review.
 """
 from __future__ import annotations
 
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 
 from openpilot.sunnypilot.sunnylink.capabilities import (
   CAPABILITY_DEFAULTS,
@@ -26,10 +30,33 @@ from openpilot.common.test import OpenpilotTestCase
 
 KNOWN_PROTOCOL_VERSIONS = (1,)
 LATEST_KNOWN = max(KNOWN_PROTOCOL_VERSIONS)
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 def caps():
   return generate_capabilities()
+
+
+def test_capabilities_import_does_not_require_unrelated_brand_packages():
+  script = textwrap.dedent("""
+    import importlib.abc
+    import sys
+
+    class MissingReleaseBrands(importlib.abc.MetaPathFinder):
+      def find_spec(self, fullname, path, target=None):
+        if fullname.startswith(("opendbc.car.hyundai", "opendbc.car.subaru")):
+          raise ModuleNotFoundError(f"No module named {fullname!r}", name=fullname)
+        return None
+
+    sys.meta_path.insert(0, MissingReleaseBrands())
+    from openpilot.sunnypilot.sunnylink.capabilities import CAPABILITY_LABELS, _resolve_brand_capabilities
+    assert CAPABILITY_LABELS
+    caps = {"brand": "tesla"}
+    _resolve_brand_capabilities(caps, "", None)
+    assert caps == {"brand": "tesla"}
+  """)
+  result = subprocess.run([sys.executable, "-c", script], cwd=REPO_ROOT, text=True, capture_output=True)
+  assert result.returncode == 0, result.stderr
 
 
 class TestProtocolVersion(OpenpilotTestCase):

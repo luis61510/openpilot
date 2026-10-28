@@ -8,8 +8,6 @@ import json
 
 from openpilot.cereal import custom, messaging
 from opendbc.car.structs import car
-from opendbc.car.hyundai.values import CAR as HYUNDAI_CAR, UNSUPPORTED_LONGITUDINAL_CAR
-from opendbc.car.subaru.values import CAR as SUBARU_CAR, SubaruFlags
 from opendbc.car.toyota.values import CAR as TOYOTA_CAR, ToyotaFlags
 from opendbc.sunnypilot.car.interfaces import has_bsm
 from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
@@ -114,6 +112,13 @@ def _resolve_brand_capabilities(caps: dict, bundle_platform: str, CP) -> None:
   brand = caps["brand"]
 
   if brand == "hyundai":
+    try:
+      from opendbc.car.hyundai.values import CAR as HYUNDAI_CAR, UNSUPPORTED_LONGITUDINAL_CAR
+    except ModuleNotFoundError as exc:
+      if not (exc.name or "").startswith("opendbc.car.hyundai"):
+        raise
+      cloudlog.exception("capabilities: Hyundai definitions are unavailable")
+      return
     if bundle_platform:
       try:
         unsupported = set().union(*UNSUPPORTED_LONGITUDINAL_CAR.values())
@@ -124,6 +129,13 @@ def _resolve_brand_capabilities(caps: dict, bundle_platform: str, CP) -> None:
       caps["hyundai_alpha_long_available"] = bool(CP.alphaLongitudinalAvailable)
 
   elif brand == "subaru":
+    try:
+      from opendbc.car.subaru.values import CAR as SUBARU_CAR, SubaruFlags
+    except ModuleNotFoundError as exc:
+      if not (exc.name or "").startswith("opendbc.car.subaru"):
+        raise
+      cloudlog.exception("capabilities: Subaru definitions are unavailable")
+      return
     if bundle_platform:
       try:
         flags = SUBARU_CAR[bundle_platform].config.flags

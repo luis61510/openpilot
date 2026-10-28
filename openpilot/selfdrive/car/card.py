@@ -24,6 +24,9 @@ from openpilot.selfdrive.car.helpers import convert_carControlSP, convert_to_cap
 
 from openpilot.sunnypilot.mads.helpers import set_alternative_experience, set_car_specific_params
 from openpilot.sunnypilot.selfdrive.car import interfaces as sunnypilot_interfaces
+from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
+  TeslaTrafficControlObserver, publish_tesla_traffic_control,
+)
 
 REPLAY = "REPLAY" in os.environ
 
@@ -122,6 +125,8 @@ class Car:
       self.CI, self.CP, self.CP_SP = CI, CI.CP, CI.CP_SP
       self.RI = RI
 
+    self.traffic_control_observer = TeslaTrafficControlObserver() if self.CP.brand == "tesla" else None
+
     self.CP.alternativeExperience = 0
     # mads
     set_alternative_experience(self.CP, self.CP_SP, self.params)
@@ -189,9 +194,14 @@ class Car:
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
 
+    if self.traffic_control_observer is not None:
+      self.traffic_control_observer.update(can_list, time.monotonic_ns())
+
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
     CS_SP = convert_to_capnp(CS_SP)
+    if self.traffic_control_observer is not None:
+      publish_tesla_traffic_control(CS_SP, self.traffic_control_observer.snapshot(time.monotonic_ns()))
 
     # Update radar tracks from CAN
     RD: structs.RadarDataT | None = self.RI.update(can_list)

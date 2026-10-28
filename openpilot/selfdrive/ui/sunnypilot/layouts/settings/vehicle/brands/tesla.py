@@ -8,7 +8,7 @@ from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, toggle_item_sp
+from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, option_item_sp, toggle_item_sp
 
 class TeslaSettings(BrandSettings):
   def __init__(self):
@@ -21,7 +21,31 @@ class TeslaSettings(BrandSettings):
       param="TeslaMadsScreenButton",
       inline=False,
     )
-    self.items = [self.coop_steering_toggle, self.mads_screen_button]
+    self.traffic_control_toggle = toggle_item_sp(
+      tr("Traffic Light Control (Experimental)"),
+      tr("Confirmed Tesla red-light observations can stop the vehicle; confirmed green observations can resume only when the path is clear."),
+      param="TeslaTrafficSignalControlEnabled",
+    )
+    self.traffic_stop_reference = option_item_sp(
+      title=tr("Traffic Light Stop Reference"),
+      param="TeslaTrafficStopReference",
+      min_value=20,
+      max_value=120,
+      value_change_step=5,
+      label_callback=lambda value: f"{value / 10.0:.1f} m",
+      description=tr("Higher values stop earlier before Tesla's reported traffic-control point."),
+    )
+    self.traffic_control_max_speed = option_item_sp(
+      title=tr("Traffic Light Control Maximum Speed"),
+      param="TeslaTrafficControlMaxSpeed",
+      min_value=20,
+      max_value=120,
+      value_change_step=5,
+      label_callback=lambda value: f"{value} km/h",
+      description=tr("Do not establish a new traffic-light control event above this speed."),
+    )
+    self.items = [self.coop_steering_toggle, self.mads_screen_button, self.traffic_control_toggle,
+                  self.traffic_stop_reference, self.traffic_control_max_speed]
 
   def update_settings(self):
     coop_steering_desc = (
@@ -36,6 +60,9 @@ class TeslaSettings(BrandSettings):
     self.coop_steering_toggle.set_description(coop_steering_desc)
 
     self.coop_steering_toggle.action_item.set_enabled(ui_state.is_offroad())
+    self.traffic_control_toggle.action_item.set_enabled(ui_state.is_offroad())
+    self.traffic_stop_reference.action_item.set_enabled(ui_state.is_offroad())
+    self.traffic_control_max_speed.action_item.set_enabled(ui_state.is_offroad())
 
     has_vehicle_bus = ui_state.CP_SP is not None and bool(ui_state.CP_SP.flags & TeslaFlagsSP.HAS_VEHICLE_BUS)
     self.mads_screen_button.set_visible(has_vehicle_bus)
