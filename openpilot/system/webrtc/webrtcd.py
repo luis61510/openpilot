@@ -69,9 +69,18 @@ class AsyncTaskRunner:
 
 
 class CerealOutgoingMessageProxy(AsyncTaskRunner):
+  # Compatibility aliases used by OpenView's current cereal adapter.
+  # This branch renamed liveCalibration -> extrinsicsCalibration and
+  # roadCameraState -> narrowRoadCameraState.
+  SERVICE_ALIASES = {
+    "liveCalibration": "extrinsicsCalibration",
+    "roadCameraState": "narrowRoadCameraState",
+  }
+
   def __init__(self, services: list[str], enabled: bool = True):
     super().__init__()
-    self.services = list(services)
+    self.output_service_names = {self.SERVICE_ALIASES.get(service, service): service for service in services}
+    self.services = list(self.output_service_names)
     self.sm = messaging.SubMaster(self.services)
     self.channels = []
     self._enabled = enabled
@@ -102,7 +111,7 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
         continue
       msg_dict = self.to_json(self.sm[service])
       mono_time, valid = self.sm.logMonoTime[service], self.sm.valid[service]
-      outgoing_msg = {"type": service, "logMonoTime": mono_time, "valid": valid, "data": msg_dict}
+      outgoing_msg = {"type": self.output_service_names.get(service, service), "logMonoTime": mono_time, "valid": valid, "data": msg_dict}
       encoded_msg = json.dumps(outgoing_msg).encode()
       for channel in self.channels:
         if not channel.is_open():
@@ -340,6 +349,7 @@ class StreamSession:
       self.stream.set_message_handler(self.message_handler)
 
       await asyncio.wait_for(self.stream.wait_for_connection(), timeout=15)
+      self.params.put_bool("IsLiveStreaming", True)
       if self.stream.has_messaging_channel():
         if self.incoming_bridge is not None:
           await self.shared_pub_master.add_services_if_needed(self.incoming_bridge_services)
