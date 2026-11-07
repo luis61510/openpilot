@@ -504,6 +504,7 @@ async def on_shutdown(state: ServerState):
       pass
     await session.stop()
   state.streams.clear()
+  Params().put_bool("IsLiveStreaming", False)
 
 
 class WebrtcdHandler(BaseHTTPRequestHandler):
