@@ -40,10 +40,6 @@ class DownloadCancelled(Exception):
   pass
 
 
-class DownloadCancelled(Exception):
-  pass
-
-
 def _is_transient(e: BaseException) -> bool:
   if isinstance(e, requests.HTTPError):
     return e.response is not None and e.response.status_code in TRANSIENT_HTTP_STATUS
