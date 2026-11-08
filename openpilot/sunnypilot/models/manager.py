@@ -157,6 +157,8 @@ class ModelManagerSP:
         artifact.downloadProgress.progress = source_artifact.downloadProgress.progress
         artifact.downloadProgress.eta = source_artifact.downloadProgress.eta
         artifact.downloadProgress.speed = source_artifact.downloadProgress.speed
+        artifact.downloadProgress.canceling = source_artifact.downloadProgress.canceling
+        artifact.downloadProgress.resuming = source_artifact.downloadProgress.resuming
 
   def _calculate_eta(self, filename: str, progress: float) -> int:
     """Calculate ETA based on elapsed time and current progress"""
