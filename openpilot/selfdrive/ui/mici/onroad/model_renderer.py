@@ -153,6 +153,7 @@ class ModelRenderer(Widget, ModelRendererSP):
     if ui_state.status != UIStatus.DISENGAGED:
       self._draw_lane_lines()
       self._draw_path(sm)
+      self.blendful.draw(self._rect)
 
     # if render_lead_indicator and radar_state:
     #   self._draw_lead_indicator()
