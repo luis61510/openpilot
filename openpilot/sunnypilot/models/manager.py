@@ -398,6 +398,9 @@ class ModelManagerSP:
     self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.downloading
     for model in self.selected_bundle.models:
       model.artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloading
+      model.artifact.downloadProgress.speed = 0.0
+      model.artifact.downloadProgress.canceling = False
+      model.artifact.downloadProgress.resuming = False
     self._report_status()
     os.makedirs(destination_path, exist_ok=True)
 
