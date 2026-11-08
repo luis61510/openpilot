@@ -95,7 +95,12 @@ class ModelsLayoutMici(NavScroller):
     self.clear_cache_btn.set_click_callback(self._confirm_clear_cache)
     self._cache_size_time = 0.0
 
-    self.main_items = [self.current_model_info, self.select_model_btn, self.cancel_download_btn, self.refresh_btn, self.clear_cache_btn]
+    self.blendful_toggle = BigParamControl(tr("Blendful (Alpha)"), "Blendful",
+                                           description=tr("Adds a gentle nudge toward lane center on top of the model's own steering, stronger when " +
+                                                          "lane lines are clear. Yields around obstacles. Not available with the Default model."))
+
+    self.main_items = [self.current_model_info, self.select_model_btn, self.cancel_download_btn, self.refresh_btn, self.clear_cache_btn,
+                       self.blendful_toggle]
     self._scroller.add_widgets(self.main_items)
 
   @property
