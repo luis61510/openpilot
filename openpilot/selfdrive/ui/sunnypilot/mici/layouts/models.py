@@ -217,7 +217,7 @@ class ModelsLayoutMici(NavScroller):
   def _update_state(self):
     super()._update_state()
 
-    blendful_allowed = ui_state.model_runner_tinygrad
+    blendful_allowed = ui_state.active_runner_tinygrad
     if blendful_allowed:
       self.blendful_toggle.set_checked(ui_state.params.get_bool("Blendful"))
       self.blendful_toggle.set_enabled(True)
