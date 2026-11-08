@@ -72,7 +72,7 @@ def _prepare_target(path: str, total: int) -> None:
 def _content_range_total(response: requests.Response) -> int | None:
   if response.status_code != 206:
     return None
-  match = re.fullmatch(r"bytes \\d+-\\d+/(\\d+)", response.headers.get("Content-Range", ""))
+  match = re.fullmatch(r"bytes \d+-\d+/(\d+)", response.headers.get("Content-Range", ""))
   return int(match.group(1)) if match else None
 
 
