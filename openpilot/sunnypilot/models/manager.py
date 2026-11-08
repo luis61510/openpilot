@@ -339,6 +339,8 @@ class ModelManagerSP:
           is_cached = True
 
       if is_cached:
+        if not artifact.chunks:
+          _cleanup_legacy_chunks(full_path)
         artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.cached
         artifact.downloadProgress.progress = 100
         artifact.downloadProgress.eta = 0
