@@ -210,8 +210,20 @@ class ModelsLayoutMici(NavScroller):
       device.set_override_interactive_timeout(None)
       self._was_downloading = False
 
+  def show_event(self):
+    super().show_event()
+    self.blendful_toggle.refresh()
+
   def _update_state(self):
     super()._update_state()
+
+    blendful_allowed = ui_state.model_runner_tinygrad
+    if blendful_allowed:
+      self.blendful_toggle.set_checked(ui_state.params.get_bool("Blendful"))
+      self.blendful_toggle.set_enabled(True)
+    else:
+      self.blendful_toggle.set_checked(False)
+      self.blendful_toggle.set_enabled(False)
 
     self.select_model_btn.set_enabled(ui_state.is_offroad())
     self.cancel_download_btn.set_visible(False)
