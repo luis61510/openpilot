@@ -375,11 +375,13 @@ class ModelManagerSP:
       self._report_status()
 
     except DownloadCancelled:
-      # a cancel keeps whatever is on disk: complete chunks resume the next attempt
+      # The row reports canceling while worker threads unwind; clear it when cancellation is complete.
       self._download_start_times.pop(artifact.fileName, None)
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.failed
       artifact.downloadProgress.eta = 0
       artifact.downloadProgress.speed = 0.0
+      artifact.downloadProgress.canceling = False
+      artifact.downloadProgress.resuming = False
       self._sync_artifact_progress(artifact)
       if self.selected_bundle:
         self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.failed
