@@ -133,6 +133,8 @@ def generate_capabilities(params: Params | None = None) -> dict:
   caps["is_sp_release"] = params.get_bool("IsReleaseSpBranch")
   caps["is_development"] = params.get_bool("IsDevelopmentBranch")
   caps["stock_longitudinal"] = params.get_bool("ToyotaEnforceStockLongitudinal")
+  # runner the manager launches; with a chestnut the big slot decides
+  caps["custom_model_active"] = params.get("ModelRunnerTypeCache") == custom.ModelManagerSP.Runner.tinygrad
 
   bundle = params.get("CarPlatformBundle")
   bundle_brand = _bundle_field(bundle, "brand")
