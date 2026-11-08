@@ -90,6 +90,11 @@ class ModelsLayout(Widget):
                                                   lambda v: f"{int(round(v / 100 * (CV.MPH_TO_KPH if ui_state.is_metric else 1)))}" +
                                                             f" {'km/h' if ui_state.is_metric else 'mph'}")
 
+    self.blendful_toggle = toggle_item_sp(tr("Blendful (Alpha)"),
+                                          tr("Adds a gentle nudge toward lane center on top of the model's own steering, stronger when lane lines are clear. " +
+                                             "Yields around obstacles. Not available with the Default model."),
+                                          param="Blendful")
+
     self.lane_turn_desire_toggle = toggle_item_sp(tr("Use Lane Turn Desires"),
                                                   tr("If you're driving at 20 mph (32 km/h) or below and have your blinker on," +
                                                      " the car will plan a turn in that direction at the nearest drivable path. " +
