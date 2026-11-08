@@ -166,7 +166,8 @@ function launch {
     MANAGER_PID=$!
 
     for ((elapsed=0; elapsed<ROLLBACK_BOOT_SECONDS; elapsed++)); do
-      if ! kill -0 "$MANAGER_PID" 2>/dev/null; then
+      MANAGER_STATE="$(ps -o stat= -p "$MANAGER_PID" 2>/dev/null | tr -d ' ')"
+      if [ -z "$MANAGER_STATE" ] || [[ "$MANAGER_STATE" == Z* ]]; then
         wait "$MANAGER_PID"
         echo "Manager exited before startup health window; rolling back"
         restore_known_good
@@ -175,7 +176,8 @@ function launch {
       sleep 1
     done
 
-    if kill -0 "$MANAGER_PID" 2>/dev/null; then
+    MANAGER_STATE="$(ps -o stat= -p "$MANAGER_PID" 2>/dev/null | tr -d ' ')"
+    if [ -n "$MANAGER_STATE" ] && [[ "$MANAGER_STATE" != Z* ]]; then
       echo "Manager remained alive for $ROLLBACK_BOOT_SECONDS seconds; test boot accepted"
       rm -f "$ROLLBACK_MARKER"
       # Keep the previous tree as a named recovery copy without blocking future updates.
