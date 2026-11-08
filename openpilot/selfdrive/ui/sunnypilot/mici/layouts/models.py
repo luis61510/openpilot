@@ -256,6 +256,8 @@ class ModelsLayoutMici(NavScroller):
       progress = 0.0
       count = 0
       verifying = False
+      canceling = False
+      speed = 0.0
       for model in manager.selectedBundle.models:
         count += 1
         p = model.artifact.downloadProgress
@@ -263,6 +265,8 @@ class ModelsLayoutMici(NavScroller):
                         custom.ModelManagerSP.DownloadStatus.verifying):
           progress += p.progress
           verifying = verifying or p.status == custom.ModelManagerSP.DownloadStatus.verifying
+          canceling = canceling or p.canceling
+          speed = max(speed, p.speed)
         elif p.status in (custom.ModelManagerSP.DownloadStatus.downloaded,
                           custom.ModelManagerSP.DownloadStatus.cached):
           progress += 100.0
@@ -276,7 +280,10 @@ class ModelsLayoutMici(NavScroller):
       self.current_model_info.current_model_text.set_text(name_text)
       self.current_model_info.info_header.set_text(tr("progress") + self._download_progress)
       self.current_model_info.info_header._shimmer = True
-      self.current_model_info.info_text.set_text(f"{progress/count:.2f}%")
+      progress_text = f"{progress/count:.2f}%"
+      if not verifying and not canceling:
+        progress_text += f"  |  {speed / 1024 ** 2:.1f} MB/s" if speed > 0 else "  |  --.- MB/s"
+      self.current_model_info.info_text.set_text(progress_text)
 
     elif manager.selectedBundle and manager.selectedBundle.status == custom.ModelManagerSP.DownloadStatus.downloaded:
       self.current_model_info.info_header.set_text(tr("downloaded"))
