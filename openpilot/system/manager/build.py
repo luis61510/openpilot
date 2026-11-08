@@ -58,7 +58,7 @@ def build() -> None:
 
     # Show TextWindow
     spinner.close()
-    if not os.getenv("CI"):
+    if not os.getenv("CI") and not os.getenv("AUTO_ROLLBACK_PENDING"):
       with TextWindow("openpilot failed to build\n \n" + error_s) as t:
         t.wait_for_exit()
     exit(1)
