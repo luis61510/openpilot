@@ -268,7 +268,7 @@ class ModelsLayoutMici(NavScroller):
       self.current_model_info.info_text.set_text(tr("download failed"))
 
     elif manager.selectedBundle and manager.selectedBundle.status == custom.ModelManagerSP.DownloadStatus.downloading:
-      self.cancel_download_btn.set_visible(True)
+      self.cancel_download_btn.set_visible(ui_state.params.get("ModelManager_DownloadRef") is not None)
       device.set_override_interactive_timeout(5)
       progress = 0.0
       count = 0
