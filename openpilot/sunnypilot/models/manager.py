@@ -225,7 +225,7 @@ class ModelManagerSP:
     started = progress.snapshot(), time.monotonic()
 
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_PIECES) as pool:
-      tasks = [loop.run_in_executor(pool, _fetch_piece, url, path, i, start, end, progress, cancel, self._block_size)
+      tasks = [loop.run_in_executor(pool, _fetch_piece, url, path, i, start, end, progress, cancel, getattr(self, "_block_size", self._chunk_size))
                for i, (start, end) in enumerate(pieces)]
       try:
         await self._report_until_done(tasks, artifact, progress, total, started)
