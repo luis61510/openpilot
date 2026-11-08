@@ -42,6 +42,7 @@ function restore_known_good {
   fi
 
   rm -f "$ROLLBACK_MARKER"
+  unset AUTO_ROLLBACK_PENDING
   cd "$DIR" || return 1
   echo "Rollback restored $ROLLBACK_SOURCE_BRANCH at $ROLLBACK_SOURCE_COMMIT"
   exec "$DIR/launch_chffrplus.sh"
