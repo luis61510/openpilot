@@ -92,6 +92,7 @@ function launch {
           echo "Valid overlay update found, installing"
           LAUNCHER_LOCATION="${BASH_SOURCE[0]}"
           CURRENT_BRANCH="$(git -C "$DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+          CURRENT_COMMIT="$(git -C "$DIR" rev-parse HEAD 2>/dev/null)"
           NEW_BRANCH="$(git -C "${STAGING_ROOT}/finalized" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 
           mv "$DIR" "$ROLLBACK_BACKUP" || return 1
@@ -102,7 +103,7 @@ function launch {
           fi
 
           # Arm rollback only for the requested opview -> four-feature test upgrade.
-          if [ "$CURRENT_BRANCH" = "$ROLLBACK_SOURCE_BRANCH" ] && [ "$NEW_BRANCH" = "$ROLLBACK_TEST_BRANCH" ]; then
+          if [ "$CURRENT_BRANCH" = "$ROLLBACK_SOURCE_BRANCH" ] && [ "$CURRENT_COMMIT" = "$ROLLBACK_SOURCE_COMMIT" ] && [ "$NEW_BRANCH" = "$ROLLBACK_TEST_BRANCH" ]; then
             mkdir -p /data/safe_staging
             printf '%s\n' "$ROLLBACK_SOURCE_BRANCH" "$ROLLBACK_SOURCE_COMMIT" "$ROLLBACK_TEST_BRANCH" > "$ROLLBACK_MARKER"
             sync
