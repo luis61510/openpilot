@@ -414,6 +414,9 @@ class ModelManagerSP:
           artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.cached
           artifact.downloadProgress.progress = 100
           artifact.downloadProgress.eta = 0
+          artifact.downloadProgress.speed = 0.0
+          artifact.downloadProgress.canceling = False
+          artifact.downloadProgress.resuming = False
         else:
           seen_artifacts.add(artifact.fileName)
           await self._process_artifact(artifact, destination_path)
