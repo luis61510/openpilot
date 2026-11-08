@@ -42,6 +42,7 @@ CAPABILITY_FIELDS = (
   "device_type",
   "subaru_has_sng",
   "hyundai_alpha_long_available",
+  "custom_model_active",
 )
 
 CAPABILITY_LABELS: dict[str, str] = {
