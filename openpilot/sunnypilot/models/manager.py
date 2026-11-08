@@ -339,7 +339,7 @@ class ModelManagerSP:
           is_cached = True
 
       if is_cached:
-        if not artifact.chunks:
+        if len(artifact.chunks) == 0:
           _cleanup_legacy_chunks(full_path)
         artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.cached
         artifact.downloadProgress.progress = 100
@@ -363,7 +363,7 @@ class ModelManagerSP:
         if not await verify_file(full_path, expected_hash):
           raise ValueError(f"Hash validation failed for {filename}")
 
-      if not artifact.chunks:
+      if len(artifact.chunks) == 0:
         _cleanup_legacy_chunks(full_path)
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloaded
       artifact.downloadProgress.progress = 100
