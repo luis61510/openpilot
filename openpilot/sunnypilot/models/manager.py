@@ -321,6 +321,9 @@ class ModelManagerSP:
         artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.cached
         artifact.downloadProgress.progress = 100
         artifact.downloadProgress.eta = 0
+        artifact.downloadProgress.speed = 0.0
+        artifact.downloadProgress.canceling = False
+        artifact.downloadProgress.resuming = False
         self._sync_artifact_progress(artifact)
         self._report_status()
         return
