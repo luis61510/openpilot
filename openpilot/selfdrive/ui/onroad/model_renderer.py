@@ -185,6 +185,7 @@ class ModelRenderer(Widget, ChevronMetrics, ModelRendererSP):
     # Update road edges using raw points
     for road_edge in self._road_edges:
       road_edge.projected_points = self._map_line_to_polygon(road_edge.raw_points, 0.025, 0.0, max_idx, max_distance)
+    self.blendful.update(self, max_idx, max_distance)
 
     # Update path using raw points
     if lead and lead.present:
