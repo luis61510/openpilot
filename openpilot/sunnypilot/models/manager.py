@@ -40,6 +40,27 @@ class DownloadCancelled(Exception):
   pass
 
 
+def _cleanup_legacy_chunks(path: str) -> None:
+  """Remove stale split-file cache after a whole-file artifact has been verified."""
+  from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+
+  manifest_path = get_manifest_path(path)
+  if not os.path.isfile(manifest_path):
+    return
+  try:
+    with open(manifest_path) as f:
+      num_chunks = int(f.read().strip())
+  except (OSError, ValueError):
+    return
+  if not 0 < num_chunks < 1000:
+    return
+  for i in range(num_chunks):
+    chunk_path = get_chunk_name(path, i, num_chunks)
+    if os.path.isfile(chunk_path):
+      os.remove(chunk_path)
+  os.remove(manifest_path)
+
+
 def _is_transient(e: BaseException) -> bool:
   if isinstance(e, requests.HTTPError):
     return e.response is not None and e.response.status_code in TRANSIENT_HTTP_STATUS
