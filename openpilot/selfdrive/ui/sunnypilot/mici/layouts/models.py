@@ -288,7 +288,8 @@ class ModelsLayoutMici(NavScroller):
                           custom.ModelManagerSP.DownloadStatus.cached):
           progress += 100.0
 
-      self.current_model_info.current_model_header.set_text(tr("verifying") if verifying else tr("downloading"))
+      header = tr("canceling...") if canceling else tr("verifying") if verifying else tr("downloading")
+      self.current_model_info.current_model_header.set_text(header)
       self.cancel_download_btn.set_text(tr("cancel verification") if verifying else tr("cancel download"))
       self.current_model_info.current_model_header._shimmer = True
       name_text = manager.selectedBundle.internalName.lower()
