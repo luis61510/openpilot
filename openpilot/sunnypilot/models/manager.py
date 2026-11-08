@@ -368,6 +368,7 @@ class ModelManagerSP:
           os.remove(f)
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.failed
       artifact.downloadProgress.eta = 0
+      artifact.downloadProgress.speed = 0.0
       self._sync_artifact_progress(artifact)
       if self.selected_bundle:
         self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.failed
