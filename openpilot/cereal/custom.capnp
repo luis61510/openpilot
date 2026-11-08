@@ -139,6 +139,8 @@ struct ModelManagerSP @0xaedffd8f31e7b55d {
     progress @1 :Float32;
     eta @2 :UInt32;
     speed @3 :Float32;
+    canceling @4 :Bool;
+    resuming @5 :Bool;
   }
 
   struct Chunk {
