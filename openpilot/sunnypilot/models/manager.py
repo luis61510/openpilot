@@ -363,6 +363,8 @@ class ModelManagerSP:
         if not await verify_file(full_path, expected_hash):
           raise ValueError(f"Hash validation failed for {filename}")
 
+      if not artifact.chunks:
+        _cleanup_legacy_chunks(full_path)
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloaded
       artifact.downloadProgress.progress = 100
       artifact.downloadProgress.eta = 0
