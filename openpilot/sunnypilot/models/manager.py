@@ -211,6 +211,8 @@ class ModelManagerSP:
 
   async def _download_file(self, url: str, path: str, artifact) -> None:
     self._download_start_times[artifact.fileName] = time.monotonic()
+    artifact.downloadProgress.canceling = False
+    artifact.downloadProgress.resuming = False
     loop = asyncio.get_running_loop()
     total, ranged = await loop.run_in_executor(None, _probe_size, url)
     pieces: list[tuple[int, int | None]] = list(_piece_ranges(total, PIECE_SIZE)) if ranged else [(0, None)]
