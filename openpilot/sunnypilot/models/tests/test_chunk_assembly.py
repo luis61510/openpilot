@@ -9,10 +9,16 @@ from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
 from openpilot.sunnypilot.models.manager import DownloadCancelled, ModelManagerSP
 
 
+class _TestManager(ModelManagerSP):
+  def __init__(self, interrupted):
+    self._interrupted = interrupted
+
+  def _download_interrupted(self):
+    return self._interrupted()
+
+
 def _manager(interrupted=lambda: False):
-  manager = object.__new__(ModelManagerSP)
-  manager._download_interrupted = interrupted
-  return manager
+  return _TestManager(interrupted)
 
 
 def _artifact(data: bytes, chunks: int):
