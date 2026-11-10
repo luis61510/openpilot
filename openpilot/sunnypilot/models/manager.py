@@ -7,7 +7,9 @@ See the LICENSE.md file in the root directory for more details.
 
 import asyncio
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from openpilot.common.params import Params
@@ -22,6 +24,10 @@ from openpilot.sunnypilot.models.helpers import (ACTIVE_BUNDLE_KEYS, get_active_
 
 # (connect, read) seconds. read is per-request inactivity, not a total cap
 DOWNLOAD_TIMEOUT = (30, 30)
+MAX_CONCURRENT_CHUNKS = 12
+REPORT_INTERVAL = 0.5
+CHUNK_RETRIES = 3
+CHUNK_BACKOFF = 1.0
 
 
 class DownloadCancelled(Exception):
@@ -65,6 +71,7 @@ class ModelManagerSP:
         artifact.downloadProgress.status = source_artifact.downloadProgress.status
         artifact.downloadProgress.progress = source_artifact.downloadProgress.progress
         artifact.downloadProgress.eta = source_artifact.downloadProgress.eta
+        artifact.downloadProgress.speed = source_artifact.downloadProgress.speed
 
   def _calculate_eta(self, filename: str, progress: float) -> int:
     """Calculate ETA based on elapsed time and current progress"""
@@ -118,40 +125,89 @@ class ModelManagerSP:
 
     manifest_path = get_manifest_path(base_path)
     self._download_start_times[artifact.fileName] = time.monotonic()
+    lock = threading.Lock()
+    cancel = threading.Event()
+    fractions = [1.0 if i in skip else 0.0 for i in range(num_chunks)]
+    byte_counts = [0 for _ in range(num_chunks)]
+    last_bytes, last_time, speed = 0, time.monotonic(), 0.0
 
-    # Shared connection saves a TCP+TLS handshake per chunk.
-    # Keep sequential: the link saturates on one stream and Session is not thread-safe.
-    completed = len(skip)
-    with requests.Session() as session:
-      for i, _ in enumerate(artifact.chunks):
-        if i in skip:
-          continue
-        chunk_url = get_chunk_name(base_url, i, num_chunks)
-        chunk_path = get_chunk_name(base_path, i, num_chunks)
-        chunk_downloaded = 0
-        with session.get(chunk_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as response:
-          response.raise_for_status()
-          chunk_size = int(response.headers.get("content-length", 0))
-          with open(chunk_path, 'wb') as f:  # noqa: ASYNC230
-            for data in response.iter_content(chunk_size=self._chunk_size):
-              f.write(data)
-              chunk_downloaded += len(data)
-              if self._download_interrupted():
-                raise DownloadCancelled("Download cancelled")
-              intra = chunk_downloaded / max(chunk_size, 1)
-              progress = min(99.0, ((completed + intra) / num_chunks) * 100)
-              artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloading
-              artifact.downloadProgress.progress = progress
-              artifact.downloadProgress.eta = self._calculate_eta(artifact.fileName, progress)
-              self._sync_artifact_progress(artifact)
-              self._report_status()
-        completed += 1
+    def snapshot():
+      with lock:
+        return sum(fractions) / num_chunks, sum(byte_counts)
+
+    def fetch_chunk(index: int):
+      chunk_url = get_chunk_name(base_url, index, num_chunks)
+      chunk_path = get_chunk_name(base_path, index, num_chunks)
+      for attempt in range(CHUNK_RETRIES):
+        with lock:
+          byte_counts[index], fractions[index] = 0, 0.0
+        try:
+          with requests.get(chunk_url, stream=True, timeout=DOWNLOAD_TIMEOUT) as response:
+            response.raise_for_status()
+            total_size = int(response.headers.get("content-length", 0))
+            written = 0
+            with open(chunk_path, 'wb') as f:
+              for data in response.iter_content(chunk_size=self._chunk_size):
+                if cancel.is_set() or self._download_interrupted():
+                  raise DownloadCancelled("Download cancelled")
+                if data:
+                  f.write(data)
+                  written += len(data)
+                  with lock:
+                    byte_counts[index] = written
+                    fractions[index] = min(0.999, written / total_size) if total_size > 0 else 0.0
+          with lock:
+            fractions[index] = 1.0
+          return
+        except DownloadCancelled:
+          raise
+        except requests.RequestException as e:
+          with lock:
+            byte_counts[index], fractions[index] = 0, 0.0
+          transient = not isinstance(e, requests.HTTPError) or (e.response is not None and e.response.status_code in (408, 429, 500, 502, 503, 504))
+          if not transient or attempt == CHUNK_RETRIES - 1:
+            raise
+          if cancel.wait(CHUNK_BACKOFF * (attempt + 1)):
+            raise DownloadCancelled("Download cancelled") from None
+
+    pending_indexes = [i for i in range(num_chunks) if i not in skip]
+    with ThreadPoolExecutor(max_workers=min(MAX_CONCURRENT_CHUNKS, max(1, len(pending_indexes)))) as pool:
+      futures = [asyncio.wrap_future(pool.submit(fetch_chunk, i)) for i in pending_indexes]
+      pending = set(futures)
+      try:
+        while pending:
+          done, pending = await asyncio.wait(pending, timeout=REPORT_INTERVAL)
+          for future in done:
+            future.result()
+          if self._download_interrupted():
+            raise DownloadCancelled("Download cancelled")
+          now = time.monotonic()
+          fraction, current_bytes = snapshot()
+          if now > last_time:
+            instant = max(0.0, (current_bytes - last_bytes) / (now - last_time))
+            speed = instant if speed == 0 else 0.7 * speed + 0.3 * instant
+          last_bytes, last_time = current_bytes, now
+          progress = min(99.0, fraction * 100)
+          artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloading
+          artifact.downloadProgress.progress = progress
+          artifact.downloadProgress.eta = self._calculate_eta(artifact.fileName, progress)
+          artifact.downloadProgress.speed = speed
+          self._sync_artifact_progress(artifact)
+          self._report_status()
+      except BaseException:
+        cancel.set()
+        for future in pending:
+          future.cancel()
+        await asyncio.gather(*futures, return_exceptions=True)
+        raise
 
     with open(manifest_path, 'w') as f:  # noqa: ASYNC230
       f.write(str(num_chunks))
     if os.path.isfile(base_path):  # noqa: ASYNC240
       os.remove(base_path)
     del self._download_start_times[artifact.fileName]
+    artifact.downloadProgress.speed = 0.0
+    self._sync_artifact_progress(artifact)
 
   async def _process_artifact(self, artifact, destination_path: str) -> None:
     if not artifact.downloadUri.uri:
@@ -190,6 +246,7 @@ class ModelManagerSP:
         artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.cached
         artifact.downloadProgress.progress = 100
         artifact.downloadProgress.eta = 0
+        artifact.downloadProgress.speed = 0
         self._sync_artifact_progress(artifact)
         self._report_status()
         return
@@ -209,6 +266,7 @@ class ModelManagerSP:
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloaded
       artifact.downloadProgress.progress = 100
       artifact.downloadProgress.eta = 0
+      artifact.downloadProgress.speed = 0
       self._sync_artifact_progress(artifact)
       self._report_status()
 
@@ -217,6 +275,7 @@ class ModelManagerSP:
       self._download_start_times.pop(artifact.fileName, None)
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.failed
       artifact.downloadProgress.eta = 0
+      artifact.downloadProgress.speed = 0
       self._sync_artifact_progress(artifact)
       if self.selected_bundle:
         self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.failed
@@ -230,6 +289,7 @@ class ModelManagerSP:
           os.remove(f)
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.failed
       artifact.downloadProgress.eta = 0
+      artifact.downloadProgress.speed = 0
       self._sync_artifact_progress(artifact)
       if self.selected_bundle:
         self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.failed

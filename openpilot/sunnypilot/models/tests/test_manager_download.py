@@ -195,24 +195,15 @@ class TestManagerDownload(ManagerDownloadTestBase):
       assert max(self.reported) <= 99.0, f"chunked progress must stay <=99 until verify, got {max(self.reported)}"
     self.run_with_server(body)
 
-  def test_session_is_reused_across_chunks(self):
-    """One connection pool shared across every chunk."""
+  def test_each_chunk_is_fetched_once(self):
+    """Each independent chunk is fetched once by the parallel worker pool."""
     def body():
       artifact = self.make_artifact(chunked=True)
       base_path = os.path.join(self.dest, artifact.fileName)
-
-      pools = []
-      original = HTTPConnectionPool.urlopen
-
-      def tracked(pool_self, *args, **kwargs):
-        pools.append(id(pool_self))
-        return original(pool_self, *args, **kwargs)
-
-      with mock.patch.object(HTTPConnectionPool, 'urlopen', tracked):
-        asyncio.run(self.manager._download_chunked(artifact.downloadUri.uri, base_path, artifact))
-
-      assert len(pools) == len(CHUNK_BODIES), f"expected one request per chunk, got {len(pools)}"
-      assert len(set(pools)) == 1, f"connection pool not reused across chunks: {len(set(pools))} pools"
+      asyncio.run(self.manager._download_chunked(artifact.downloadUri.uri, base_path, artifact))
+      requested = [p for p in DownloadHandler.request_paths if ".chunk" in p]
+      assert len(requested) == len(CHUNK_BODIES), f"expected one request per chunk, got {requested}"
+      assert len(set(requested)) == len(CHUNK_BODIES), "a chunk was fetched more than once"
     self.run_with_server(body)
 
   def test_http_error_propagates(self):
