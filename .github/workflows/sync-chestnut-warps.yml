@@ -4,7 +4,14 @@ on:
   push:
     branches:
       - dev-sp-1015opview-3priority-egpu-audit
+    paths:
+      - 'tinygrad_repo'
+      - '.github/workflows/sync-chestnut-warps.yml'
   workflow_dispatch:
+
+concurrency:
+  group: chestnut-warps-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
