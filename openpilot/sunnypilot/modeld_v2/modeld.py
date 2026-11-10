@@ -43,6 +43,7 @@ from openpilot.sunnypilot.modeld_v2.camera_offset_helper import CameraOffsetHelp
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.modeld_v2.helpers import load_oob
+from openpilot.sunnypilot.modeld_v2.egpu_load import EGPU_RETRY_BUDGET, load_with_retry
 from openpilot.sunnypilot.modeld_v2.model_adapters import get_model_adapter
 from openpilot.sunnypilot.models.helpers import get_active_bundle
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
@@ -312,14 +313,17 @@ def main(demo=False):
     def load_big():
       nonlocal big_model
       try:
-        m = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
+        m, load_err = load_with_retry(
+          lambda: ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True))
+        if m is None:
+          raise RuntimeError(f"eGPU model load failed ({load_err!r})") from load_err
         m.warmup()
         big_model = m
       except Exception:
         cloudlog.exception("chestnut load failed")
     loader = threading.Thread(target=load_big, daemon=True)
     loader.start()
-    loader.join(BIG_MODEL_TIMEOUT)
+    loader.join(BIG_MODEL_TIMEOUT + EGPU_RETRY_BUDGET)
     model = big_model
     params.put_bool("ChestnutActive", model is not None)
 
