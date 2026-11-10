@@ -162,10 +162,16 @@ class SpeedLimitRenderer(Widget, SpeedLimitAlertRenderer):
     controls_state = sm['controlsState']
     car_state = sm["carState"]
 
+    # Match the HUD set-speed validity rule: when neither OP nor stock ACC
+    # is enabled, vCruiseCluster may mirror vEgo and is not a valid setpoint.
+    cruise_enabled = car_state.cruiseState.enabled or sm['carControl'].enabled
     v_cruise_cluster = car_state.vCruiseCluster
-    self.set_speed = (
-      controls_state.deprecated.vCruise if v_cruise_cluster == 0.0 else v_cruise_cluster
-    )
+    if cruise_enabled:
+      self.set_speed = (
+        controls_state.deprecated.vCruise if v_cruise_cluster <= 0.0 else v_cruise_cluster
+      )
+    else:
+      self.set_speed = SET_SPEED_NA
     self.is_cruise_set = 0 < self.set_speed < SET_SPEED_NA
     self.is_cruise_available = self.set_speed != -1
 
