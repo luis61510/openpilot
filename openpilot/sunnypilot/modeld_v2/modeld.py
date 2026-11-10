@@ -16,7 +16,7 @@ from setproctitle import setproctitle
 
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
-from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path, wait_for_chestnut
+from openpilot.selfdrive.modeld.helpers import chestnut_present, chestnut_warps_compiled, modeld_pkl_path, wait_for_chestnut
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -45,7 +45,7 @@ from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.modeld_v2.helpers import is_plain_artifact, load_model, load_oob
 from openpilot.sunnypilot.modeld_v2.egpu_load import CHESTNUT_ENUM_TIMEOUT, EGPU_RETRY_BUDGET, load_with_retry
 from openpilot.sunnypilot.modeld_v2.model_adapters import get_model_adapter
-from openpilot.sunnypilot.models.helpers import get_active_bundle, selected_chestnut_compiled
+from openpilot.sunnypilot.models.helpers import get_active_bundle
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
@@ -104,8 +104,8 @@ class ModelState(ModelStateBase):
     self.chestnut = chestnut
 
     pkl_path = _find_driving_pkl(model_bundle)
-    if pkl_path is None and model_bundle is None:
-      default_pkl = modeld_pkl_path(chestnut=chestnut)
+    if pkl_path is None and not chestnut and model_bundle is None:
+      default_pkl = modeld_pkl_path(chestnut=False)
       pkl_path = str(default_pkl) if _pkl_exists(default_pkl) else None
     assert pkl_path is not None, f"No driving pkl found for {'chestnut' if chestnut else 'small model'} — all models must be compiled with compile_modeld.py"
     self._init_combined(pkl_path, cam_w, cam_h, model_bundle)
@@ -275,7 +275,9 @@ def main(demo=False):
 
   params = Params()
   from openpilot.common.hardware.usb import cable_connected
-  CHESTNUT = selected_chestnut_compiled(params) and (chestnut_present() or cable_connected())
+  chestnut_bundle = get_active_bundle(params, chestnut=True)
+  CHESTNUT = (chestnut_bundle is not None and _find_driving_pkl(chestnut_bundle) is not None and
+              chestnut_warps_compiled() and (chestnut_present() or cable_connected()))
   if CHESTNUT:
     from tinygrad.runtime.ops_amd import AMDDevice
     AMDDevice.wait_timeout_ms = 3000
