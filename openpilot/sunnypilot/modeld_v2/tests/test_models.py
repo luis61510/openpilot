@@ -41,7 +41,9 @@ class TestLegacyModels(unittest.TestCase):
         device_targets = [target for target in targets if target.get("device") == expected_device]
         assert device_targets, f"No {expected_device} kernels found in {base_name}"
         if expected_device == "AMD":
-          assert all(target.get("arch") == "gfx1200" and target.get("interface") == "USB" for target in device_targets), f"Chestnut model is not compiled for gfx1200 USB: {base_name}"
+          assert all(
+            target.get("arch") == "gfx1200" and target.get("interface") == "USB" for target in device_targets
+          ), f"Chestnut model is not compiled for gfx1200 USB: {base_name}"
         elif expected_device == "QCOM":
           assert all(target.get("arch", "").startswith("a630") for target in device_targets), f"QCOM model is not compiled for a630: {base_name}"
       bundle = load_model(base_path, {"QCOM": "CPU", "AMD": "CPU"}, verify=False, cache=False)
