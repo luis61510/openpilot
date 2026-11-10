@@ -238,10 +238,17 @@ class ModelsLayout(Widget):
     if ds.failed in statuses:
       # close.png is authored black and a tint cannot lift it, hence close2
       return {"name": name, "status_text": tr("download failed"), "text_color": rl.RED, "icon": "icons/close2.png"}
+    if any(p.canceling for p in progresses):
+      return {"name": name, "downloading": True, "progress": progress, "status_text": tr("canceling...")}
     if ds.verifying in statuses:
       return {"name": name, "downloading": True, "progress": progress, "status_text": tr("verifying")}
     if ds.downloading in statuses:
-      return {"name": name, "downloading": True, "progress": progress}
+      speed = max((p.speed for p in progresses), default=0.0)
+      eta = max((p.eta for p in progresses), default=0)
+      speed_text = f"{speed / 1024 ** 2:.1f} MB/s" if speed > 0 else "--.- MB/s"
+      eta_text = f"ETA {eta // 60}m {eta % 60:02d}s" if eta >= 60 else f"ETA {eta}s"
+      status_text = f"{speed_text} · {eta_text}" if eta > 0 else speed_text
+      return {"name": name, "downloading": True, "progress": progress, "status_text": status_text}
     if statuses <= {ds.downloaded, ds.cached}:
       return {"name": name, "text_color": ON_COLOR, "icon": "icons/checkmark.png"}
     # circled_slash is authored grey; tinting it again only darkens it
