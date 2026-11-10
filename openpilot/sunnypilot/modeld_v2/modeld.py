@@ -13,6 +13,7 @@ import numpy as np
 import threading
 import time
 from setproctitle import setproctitle
+from tinygrad.device import Device
 
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
@@ -168,6 +169,10 @@ class ModelState(ModelStateBase):
     self.parser = Parser()
     self.prev_desire = np.zeros(self.constants.DESIRE_LEN, dtype=np.float32)
 
+  def _check_chestnut_device_error(self) -> None:
+    if self.chestnut and (err := Device[self.DEV].error_state.host.view(fmt='q')[0]):
+      raise RuntimeError(f"chestnut failed with {err}")
+
   def warmup(self) -> None:
     dummy_frames, transforms, dummy_inputs = self.adapter.get_dummy_inputs()
     self.run(dummy_frames, transforms, dummy_inputs)
@@ -216,6 +221,7 @@ class ModelState(ModelStateBase):
 
     if self._combined_model_type == 'supercombo':
       model_output = raw_outputs.numpy().flatten()
+      self._check_chestnut_device_error()
       if not np.all(np.isfinite(model_output)):
         raise RuntimeError("model output not finite")
       sliced = {k: model_output[np.newaxis, v] for k, v in self.vision_output_slices.items()}
@@ -225,6 +231,7 @@ class ModelState(ModelStateBase):
           model_output[self.vision_output_slices['hidden_state']]
     else:
       vision_output = raw_outputs[0].numpy().flatten()
+      self._check_chestnut_device_error()
       vision_sliced = {k: vision_output[np.newaxis, v] for k, v in self.vision_output_slices.items()}
       outputs = self.parser.parse_vision_outputs(vision_sliced)
 
