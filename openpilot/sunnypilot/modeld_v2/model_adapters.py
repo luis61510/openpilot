@@ -68,7 +68,7 @@ class BaseModelAdapter:
     warp_dir = Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
     warp_name = f'{"big_" if self.chestnut else ""}driving_warp_{self.cam_w}x{self.cam_h}_tinygrad.pkl'
     warp_path = warp_dir / warp_name
-    if is_plain_artifact(warp_path):
+    if is_plain_artifact(str(warp_path)):
       warp_data = load_model(str(warp_path), cache=False)
       self.warp_frame_size = warp_data['input_specs']['input_frame'][0][1]
       return warp_data['run']
