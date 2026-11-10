@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import os
 import base64
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR, load_oob
+from openpilot.selfdrive.modeld.helpers import MODELS_DIR
+from openpilot.sunnypilot.modeld_v2.helpers import load_oob
 from tinygrad.tensor import Tensor
 import time
 import pickle
@@ -45,8 +46,8 @@ class ModelState:
     self._blob_cache : dict[int, Tensor] = {}
     self.model_run = jits['run']
     self.outputs = {name: Tensor(np.zeros(shape, dtype=dtype), device=device).realize() for name, (shape, dtype, device) in jits['output_specs'].items()}
-    with open(MODELS_DIR / f'dm_warp_{cam_w}x{cam_h}_tinygrad.pkl', "rb") as f:
-      self.image_warp = pickle.load(f)['run']
+    warp_path = MODELS_DIR / f'dm_warp_{cam_w}x{cam_h}_tinygrad.pkl'
+    self.image_warp = load_oob(open_file_chunked(warp_path))['run']
 
   def run(self, buf: VisionBuf, calib: np.ndarray, transform: np.ndarray) -> tuple[np.ndarray, float]:
     self.numpy_inputs['calib'][0,:] = calib
