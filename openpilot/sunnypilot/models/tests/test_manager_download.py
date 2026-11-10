@@ -17,7 +17,6 @@ from typing import Any
 from unittest import mock
 
 import requests
-from urllib3.connectionpool import HTTPConnectionPool
 
 from openpilot.cereal import custom
 from openpilot.common.test import OpenpilotTestCase
