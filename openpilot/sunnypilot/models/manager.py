@@ -496,8 +496,8 @@ class ModelManagerSP:
         self.sm.update(0)
         self.chestnut_present = self.sm['deviceState'].chestnutPresent
         self.source_models = {source: self.model_fetcher.get_bundles_for_source(source) for source in ModelFetcher.MODEL_SOURCES}
-        # Keep both catalogs visible in the selector; download routing still resolves each ref to its source.
-        self.available_models = self.source_models["qcom"] + self.source_models["chestnut"]
+        # The UI uses availableBundles only for the active source; the other source is read from its own cache.
+        self.available_models = self.source_models[ModelFetcher.active_source(self.chestnut_present)]
         validate_active_bundles(self.params, self.source_models)
         self.active_bundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
 
