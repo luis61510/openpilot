@@ -47,33 +47,46 @@ jobs:
         with:
           submodules: true
 
-      - name: Download Model Chunks in Parallel
+      - name: Download Model Artifact
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODEL_URL: ${{ matrix.artifact.download_uri.url }}
+          MODEL_FILE: ${{ matrix.artifact.file_name }}
         run: |
           mkdir -p /tmp/model_chunks
           echo '${{ toJson(matrix.artifact.chunks) }}' > chunks.json
 
-          BASE_URL="${{ matrix.artifact.download_uri.url }}"
-          export BASE_DIR=$(dirname "$BASE_URL")
+          python3 - <<'PY'
+          import json, os, subprocess
 
-          python3 -c '
-          import json, os
           with open("chunks.json") as f:
-            chunks = json.load(f)
-          manifest_path = f"/tmp/model_chunks/${{ matrix.artifact.file_name }}.chunkmanifest"
-          with open(manifest_path, "w") as f:
-            f.write(str(len(chunks)))
-          base_dir = os.environ["BASE_DIR"]
-          hf_token = os.environ.get("HF_TOKEN", "")
-          with open("/tmp/curl_config.txt", "w") as f:
-            for c in chunks:
-              fn = c["file_name"]
-              f.write(f"url = \"{base_dir}/{fn}\"\noutput = \"/tmp/model_chunks/{fn}\"\n")
-              if hf_token:
-                f.write(f"header = \"Authorization: Bearer {hf_token}\"\n")
-          '
-          curl -Z --parallel-immediate --parallel-max 12 --retry 3 --retry-all-errors -s -S -f -L -K /tmp/curl_config.txt
+            chunks = json.load(f) or []
+          base_url = os.environ["MODEL_URL"]
+          model_file = os.environ["MODEL_FILE"]
+          dest_dir = "/tmp/model_chunks"
+          token = os.environ.get("HF_TOKEN", "")
+
+          if chunks:
+            manifest_path = os.path.join(dest_dir, f"{model_file}.chunkmanifest")
+            with open(manifest_path, "w") as f:
+              f.write(str(len(chunks)))
+            base_dir = base_url.rsplit("/", 1)[0]
+            config_path = "/tmp/curl_config.txt"
+            with open(config_path, "w") as f:
+              for chunk in chunks:
+                name = chunk["file_name"]
+                f.write(f'url = "{base_dir}/{name}"\noutput = "{dest_dir}/{name}"\n')
+                if token:
+                  f.write(f'header = "Authorization: Bearer {token}"\n')
+            subprocess.run(["curl", "-Z", "--parallel-immediate", "--parallel-max", "12",
+                            "--retry", "3", "--retry-all-errors", "-s", "-S", "-f", "-L",
+                            "-K", config_path], check=True)
+          else:
+            cmd = ["curl", "-fL", "-s", "-S", MODEL_URL, "-o", os.path.join(dest_dir, model_file)]
+            if token:
+              cmd[1:1] = ["-H", f"Authorization: Bearer {token}"]
+            subprocess.run(cmd, check=True)
+          PY
 
       - name: Run Model Compatibility Test
         env:
