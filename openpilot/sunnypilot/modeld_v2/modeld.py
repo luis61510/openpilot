@@ -16,7 +16,7 @@ from setproctitle import setproctitle
 
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
-from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path
+from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path, wait_for_chestnut
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -45,7 +45,7 @@ from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.modeld_v2.helpers import is_plain_artifact, load_model, load_oob
 from openpilot.sunnypilot.modeld_v2.egpu_load import EGPU_RETRY_BUDGET, load_with_retry
 from openpilot.sunnypilot.modeld_v2.model_adapters import get_model_adapter
-from openpilot.sunnypilot.models.helpers import get_active_bundle
+from openpilot.sunnypilot.models.helpers import get_active_bundle, selected_chestnut_compiled
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
@@ -104,8 +104,8 @@ class ModelState(ModelStateBase):
     self.chestnut = chestnut
 
     pkl_path = _find_driving_pkl(model_bundle)
-    if pkl_path is None and not chestnut and model_bundle is None:
-      default_pkl = modeld_pkl_path(chestnut=False)
+    if pkl_path is None and model_bundle is None:
+      default_pkl = modeld_pkl_path(chestnut=chestnut)
       pkl_path = str(default_pkl) if _pkl_exists(default_pkl) else None
     assert pkl_path is not None, f"No driving pkl found for {'chestnut' if chestnut else 'small model'} — all models must be compiled with compile_modeld.py"
     self._init_combined(pkl_path, cam_w, cam_h, model_bundle)
@@ -273,11 +273,13 @@ def main(demo=False):
   setproctitle(PROCESS_NAME)
   config_realtime_process(7, 54)
 
-  CHESTNUT = chestnut_present()
-  if CHESTNUT:
-    os.environ['HCQDEV_WAIT_TIMEOUT_MS'] = '3000'
-
   params = Params()
+  from openpilot.common.hardware.usb import cable_connected
+  CHESTNUT = selected_chestnut_compiled(params) and (chestnut_present() or cable_connected())
+  if CHESTNUT:
+    from tinygrad.runtime.ops_amd import AMDDevice
+    AMDDevice.wait_timeout_ms = 3000
+
   params.put_bool("ChestnutLoading", CHESTNUT)
   params.remove("ChestnutActive")
 
@@ -313,6 +315,7 @@ def main(demo=False):
     def load_big():
       nonlocal big_model
       try:
+        wait_for_chestnut()
         m, load_err = load_with_retry(lambda: ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True))
         if m is None:
           raise RuntimeError(f"model load failed ({load_err!r})") from load_err
