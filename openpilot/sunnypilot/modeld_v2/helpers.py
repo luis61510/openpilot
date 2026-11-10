@@ -223,14 +223,16 @@ def _device(recorded: str, device_map: dict | None) -> str:
 
 def _upload(buffer, data: memoryview, chunk: int = 16 << 20) -> None:
   from tinygrad.device import Buffer
+  from tinygrad.dtype import dtypes
   source, chunk = Buffer("NPY", len(data), opaque=memoryview(bytearray(data)) if data.readonly else data), min(chunk, len(data))
   for offset in sorted({*range(0, len(data) - chunk, chunk), len(data) - chunk}):
-    buffer.view(chunk, offset).ensure_allocated().copy_from(source.view(chunk, offset).ensure_allocated())
+    buffer.view(chunk, dtypes.uint8, offset).ensure_allocated().copy_from(source.view(chunk, dtypes.uint8, offset).ensure_allocated())
 
 
 def _allocate_buffers(header: dict, blob: memoryview, device_map: dict | None, shared: dict) -> list:
   import numpy as np
   from tinygrad.device import Buffer
+  from tinygrad.dtype import dtypes
   written = {call["args"][i]["buffer"] for call in header["calls"] for i in (call["outs"] if call["kind"] == "program" else (0,))
              if "buffer" in call["args"][i]}
   entries = [(_device(entry["device"], device_map), blob[slice(*entry["init"])] if "init" in entry else None, entry) for entry in header["buffers"]]
@@ -246,7 +248,7 @@ def _allocate_buffers(header: dict, blob: memoryview, device_map: dict | None, s
       group = list(group)
       start, end = min(span[0] for span, _, _ in group), max(span[1] for span, _, _ in group)
       _upload(block := Buffer(device, end - start).ensure_allocated(), blob[start:end])
-      shared |= {key: block.view(nbytes, span[0] - start).ensure_allocated() for span, nbytes, key in group}
+      shared |= {key: block.view(nbytes, dtypes.uint8, span[0] - start).ensure_allocated() for span, nbytes, key in group}
   buffers = []
   for (device, data, entry), key in zip(entries, keys, strict=True):
     if key not in shared:
