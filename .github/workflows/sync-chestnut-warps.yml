@@ -1,0 +1,72 @@
+name: Sync official Chestnut Tinygrad warp artifacts
+
+on:
+  push:
+    branches:
+      - dev-sp-1015opview-3priority-egpu-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-warps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download official Sunnypilot prebuilt artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/sunnypilot/sunnypilot/actions/artifacts/12863105059/zip" \
+            -o /tmp/sunnypilot-prebuilt.zip
+          unzip -p /tmp/sunnypilot-prebuilt.zip prebuilt.tar.gz > /tmp/prebuilt.tar.gz
+          mkdir -p /tmp/official-warps
+          tar -xzf /tmp/prebuilt.tar.gz -C /tmp/official-warps \
+            ./openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1344x760_tinygrad.pkl \
+            ./openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1928x1208_tinygrad.pkl \
+            ./openpilot/sunnypilot/modeld_v2/models/driving_warp_1344x760_tinygrad.pkl \
+            ./openpilot/sunnypilot/modeld_v2/models/driving_warp_1928x1208_tinygrad.pkl
+
+      - name: Verify official warp checksums and install files
+        run: |
+          set -euo pipefail
+          SRC=/tmp/official-warps/openpilot/sunnypilot/modeld_v2/models
+          sha256sum -c <<'EOF'
+          f1689356ff8e516f87e3d75f6b53e66953a11ee5a97e859b4808c9a16bfe671b  /tmp/official-warps/openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1344x760_tinygrad.pkl
+          56cc9690e0e9fb719323d2c6646c1305e8bc6bbdfdc807724a605a0d0a37554b  /tmp/official-warps/openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1928x1208_tinygrad.pkl
+          4b22fd6bcb3a3e8a642e6866449dd9c30c12e694ff0741cad9e34e4b00d8c5fa  /tmp/official-warps/openpilot/sunnypilot/modeld_v2/models/driving_warp_1344x760_tinygrad.pkl
+          9a17fd6acece4fab23784ef0f3f8bba28a049e9599e5e9e5ee7b36e4b1d24a6f  /tmp/official-warps/openpilot/sunnypilot/modeld_v2/models/driving_warp_1928x1208_tinygrad.pkl
+          EOF
+          mkdir -p openpilot/sunnypilot/modeld_v2/models
+          cp "$SRC"/*.pkl openpilot/sunnypilot/modeld_v2/models/
+
+      - name: Store warp binaries as regular Git blobs
+        run: |
+          set -euo pipefail
+          cat >> .gitattributes <<'EOF'
+
+          # Official compiled Tinygrad warp artifacts are kept as regular Git blobs.
+          openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1344x760_tinygrad.pkl -filter -diff -merge -text
+          openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1928x1208_tinygrad.pkl -filter -diff -merge -text
+          openpilot/sunnypilot/modeld_v2/models/driving_warp_1344x760_tinygrad.pkl -filter -diff -merge -text
+          openpilot/sunnypilot/modeld_v2/models/driving_warp_1928x1208_tinygrad.pkl -filter -diff -merge -text
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .gitattributes openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1344x760_tinygrad.pkl openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1928x1208_tinygrad.pkl openpilot/sunnypilot/modeld_v2/models/driving_warp_1344x760_tinygrad.pkl openpilot/sunnypilot/modeld_v2/models/driving_warp_1928x1208_tinygrad.pkl
+          if git diff --cached --quiet; then
+            echo "Official warp files already installed."
+            exit 0
+          fi
+          git commit -m "feat(egpu): add official Tinygrad warp artifacts"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
