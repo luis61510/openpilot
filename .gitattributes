@@ -14,3 +14,9 @@ openpilot/sunnypilot/modeld_v2/models/*.pkl filter=lfs diff=lfs merge=lfs -text
 
 openpilot/selfdrive/car/tests/test_models_segs.txt filter=lfs diff=lfs merge=lfs -text
 openpilot/common/hardware/comma/updater filter=lfs diff=lfs merge=lfs -text
+
+# Official compiled Tinygrad warp artifacts are kept as regular Git blobs.
+openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1344x760_tinygrad.pkl -filter -diff -merge -text
+openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1928x1208_tinygrad.pkl -filter -diff -merge -text
+openpilot/sunnypilot/modeld_v2/models/driving_warp_1344x760_tinygrad.pkl -filter -diff -merge -text
+openpilot/sunnypilot/modeld_v2/models/driving_warp_1928x1208_tinygrad.pkl -filter -diff -merge -text
