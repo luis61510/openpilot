@@ -43,7 +43,7 @@ class BmsState:
       voltage = int.from_bytes(data[:2], 'little') * .01
       current = -int.from_bytes(data[2:4], 'little', signed=True) * .1  # positive = discharge
       if not (50 <= voltage <= 600 and -2000 <= current <= 2000):
-        self.values.update({key: (None, now) for key in ('voltage', 'current', 'power')})
+        self.values.update(dict.fromkeys(('voltage', 'current', 'power'), (None, now)))
         self._hv_time = None
         return
       if self._hv_time is not None and 0 < now - self._hv_time <= .1:
