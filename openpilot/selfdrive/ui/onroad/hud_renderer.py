@@ -84,10 +84,16 @@ class HudRenderer(Widget):
     controls_state = sm['controlsState']
     car_state = sm['carState']
 
+    # A disabled Tesla ACC can report the current vehicle speed in
+    # vCruiseCluster. Do not present that value as a cruise MAX setpoint.
+    cruise_enabled = car_state.cruiseState.enabled or sm['carControl'].enabled
     v_cruise_cluster = car_state.vCruiseCluster
-    self.set_speed = (
-      controls_state.deprecated.vCruise if v_cruise_cluster == 0.0 else v_cruise_cluster
-    )
+    if cruise_enabled:
+      self.set_speed = (
+        controls_state.deprecated.vCruise if v_cruise_cluster <= 0.0 else v_cruise_cluster
+      )
+    else:
+      self.set_speed = SET_SPEED_NA
     self.is_cruise_set = 0 < self.set_speed < SET_SPEED_NA
     self.is_cruise_available = self.set_speed != -1
 
