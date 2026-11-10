@@ -1,0 +1,27 @@
+name: Test Plain Tinygrad Artifacts
+
+on:
+  pull_request:
+    paths:
+      - 'openpilot/sunnypilot/modeld_v2/**'
+      - '.github/workflows/test-plain-artifact.yml'
+      - 'tinygrad_repo'
+  workflow_dispatch:
+
+jobs:
+  plain-artifact-cpu:
+    name: Plain artifact round-trip and frame-fusion tests (CPU)
+    runs-on: ubuntu-latest
+    container: ghcr.io/commaai/openpilot-base:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Run plain artifact tests
+        env:
+          TINYGRAD_TESTS: "1"
+          DEV: CPU
+          PYTHONPATH: ${{ github.workspace }}/tinygrad_repo:${{ github.workspace }}
+        run: |
+          python3 -m pytest -q openpilot/sunnypilot/modeld_v2/tests/test_plain_artifact.py
