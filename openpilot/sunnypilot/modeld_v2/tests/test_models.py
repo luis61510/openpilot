@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.file_chunker import open_file_chunked
-from openpilot.sunnypilot.modeld_v2.helpers import PlainJit, is_plain_artifact, load_model, load_oob
+from openpilot.sunnypilot.modeld_v2.helpers import PlainJit, is_plain_artifact, load_model, load_oob, read_parts
 from tinygrad.device import Device
 
 
@@ -34,10 +34,22 @@ class TestLegacyModels(unittest.TestCase):
     base_path = os.path.join(chunk_dir, base_name)
 
     if is_plain_artifact(base_path):
+      parts, _ = read_parts(base_path)
+      expected_device = os.environ.get("MODEL_EXPECTED_DEVICE")
+      if expected_device:
+        targets = [call["target"] for header, _ in parts.values() for call in header["calls"] if call["kind"] == "program"]
+        device_targets = [target for target in targets if target.get("device") == expected_device]
+        assert device_targets, f"No {expected_device} kernels found in {base_name}"
+        if expected_device == "AMD":
+          assert all(target.get("arch") == "gfx1200" and target.get("interface") == "USB" for target in device_targets), f"Chestnut model is not compiled for gfx1200 USB: {base_name}"
+        elif expected_device == "QCOM":
+          assert all(target.get("arch", "").startswith("a630") for target in device_targets), f"QCOM model is not compiled for a630: {base_name}"
       bundle = load_model(base_path, {"QCOM": "CPU", "AMD": "CPU"}, verify=False, cache=False)
       jits = [value for value in bundle.values() if isinstance(value, PlainJit)]
       assert "metadata" in bundle and jits and all(len(jit.captured.linear.src) > 0 for jit in jits)
       return
+    if os.environ.get("MODEL_EXPECTED_DEVICE") == "AMD":
+      self.fail(f"Chestnut model is not in the expected plain Tinygrad format: {base_name}")
 
     try:
       f = open_file_chunked(base_path)
