@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'openpilot/sunnypilot/modeld_v2/**'
+      - 'openpilot/sunnypilot/models/**'
       - '.github/workflows/test-plain-artifact.yml'
       - 'tinygrad_repo'
   workflow_dispatch:
@@ -24,4 +25,4 @@ jobs:
           DEV: CPU
           PYTHONPATH: ${{ github.workspace }}/tinygrad_repo:${{ github.workspace }}
         run: |
-          python3 -m pytest -q openpilot/sunnypilot/modeld_v2/tests/test_plain_artifact.py
+          python3 -m pytest -q openpilot/sunnypilot/modeld_v2/tests/test_plain_artifact.py openpilot/sunnypilot/models/tests/test_chunk_assembly.py
