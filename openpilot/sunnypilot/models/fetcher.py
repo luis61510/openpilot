@@ -46,9 +46,15 @@ class ModelParser:
         model_dir = Paths.model_root()
         os.makedirs(model_dir, exist_ok=True)
         manifest_path = os.path.join(model_dir, f"{artifact.fileName}.chunkmanifest")
+        full_path = os.path.join(model_dir, artifact.fileName)
         num_chunks = str(len(artifact.chunks))
 
-        if not os.path.exists(manifest_path) or open(manifest_path).read().strip() != num_chunks:
+        # Once chunked artifacts have been assembled, the runtime loader reads the
+        # contiguous file directly. Do not recreate a chunk manifest beside it.
+        if os.path.isfile(full_path):
+          if os.path.exists(manifest_path):
+            os.remove(manifest_path)
+        elif not os.path.exists(manifest_path) or open(manifest_path).read().strip() != num_chunks:
           with open(manifest_path, "w") as f:
             f.write(num_chunks)
           cloudlog.info(f"Wrote chunk manifest for {artifact.fileName}: {num_chunks} chunks")
