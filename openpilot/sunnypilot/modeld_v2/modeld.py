@@ -130,6 +130,11 @@ class ModelState(ModelStateBase):
     with open_file_chunked(pkl_path) as artifact_file:
       is_plain_artifact = artifact_file.read(len(MAGIC)) == MAGIC
     if is_plain_artifact:
+      warp_name = f'{"big_" if self.chestnut else ""}driving_warp_{cam_w}x{cam_h}_tinygrad.pkl'
+      warp_path = os.path.join(os.path.dirname(__file__), "models", warp_name)
+      with open_file_chunked(warp_path) as warp_file:
+        if warp_file.read(len(MAGIC)) != MAGIC:
+          raise RuntimeError(f"plain driving artifact requires a matching plain warp artifact: {warp_path}")
       jits = load_model(pkl_path, extend=fused_with_warp(cam_w, cam_h, self.chestnut))
     else:
       jits = load_oob(open_file_chunked(pkl_path))
