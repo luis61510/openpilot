@@ -53,6 +53,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeC
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
 BIG_MODEL_TIMEOUT = 60
+CHESTNUT_ENUMERATION_TIMEOUT = 10
 
 
 def _pkl_exists(path):
@@ -337,7 +338,7 @@ def main(demo=False):
       nonlocal big_model
       try:
         # Wait for the Chestnut PCIe/USB link before Tinygrad initializes the AMD device.
-        wait_for_chestnut()
+        wait_for_chestnut(timeout=CHESTNUT_ENUMERATION_TIMEOUT)
         m, load_err = load_with_retry(
           lambda: ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True))
         if m is None:
@@ -348,7 +349,7 @@ def main(demo=False):
         cloudlog.exception("chestnut load failed")
     loader = threading.Thread(target=load_big, daemon=True)
     loader.start()
-    loader.join(BIG_MODEL_TIMEOUT + EGPU_RETRY_BUDGET)
+    loader.join(BIG_MODEL_TIMEOUT + EGPU_RETRY_BUDGET + CHESTNUT_ENUMERATION_TIMEOUT)
     model = big_model
     params.put_bool("ChestnutActive", model is not None)
 
