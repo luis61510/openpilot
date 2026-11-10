@@ -82,7 +82,7 @@ jobs:
                             "--retry", "3", "--retry-all-errors", "-s", "-S", "-f", "-L",
                             "-K", config_path], check=True)
           else:
-            cmd = ["curl", "-fL", "-s", "-S", MODEL_URL, "-o", os.path.join(dest_dir, model_file)]
+            cmd = ["curl", "-fL", "-s", "-S", base_url, "-o", os.path.join(dest_dir, model_file)]
             if token:
               cmd[1:1] = ["-H", f"Authorization: Bearer {token}"]
             subprocess.run(cmd, check=True)
