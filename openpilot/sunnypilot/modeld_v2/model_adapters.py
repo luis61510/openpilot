@@ -25,8 +25,15 @@ from tinygrad.uop.ops import UOp
 
 
 def input_view(buffer: Buffer, shape: tuple[int, ...], dtype: DType, offset: int) -> Tensor:
-  view = buffer.view(math.prod(shape), dtype, offset).ensure_allocated()
-  return Tensor(UOp.from_buffer(view)).reshape(shape)
+  # tinygrad changed Buffer.view from (elements, dtype, offset) to (bytes, offset);
+  # keep the legacy call working while accepting the current Plain Artifact ABI.
+  try:
+    view = buffer.view(math.prod(shape) * dtype.itemsize, offset).ensure_allocated()
+    tensor = Tensor(UOp.from_buffer(view, dtype))
+  except TypeError:
+    view = buffer.view(math.prod(shape), dtype, offset).ensure_allocated()
+    tensor = Tensor(UOp.from_buffer(view))
+  return tensor.reshape(shape)
 
 
 class BaseModelAdapter:
