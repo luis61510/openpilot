@@ -1,6 +1,7 @@
 import io
 import pickle
 import struct
+import time
 from pathlib import Path
 
 from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
@@ -33,6 +34,16 @@ def chestnut_present() -> bool:
     except Exception:
       pass
   return False
+
+
+def wait_for_chestnut(timeout: float = 10.) -> None:
+  # The USB cable can be detected before the Chestnut bridge finishes enumerating.
+  started = time.monotonic()
+  while not chestnut_present():
+    if time.monotonic() - started > timeout:
+      raise TimeoutError("chestnut did not enumerate")
+    time.sleep(0.1)
+
 
 def _compiled_file(path: Path) -> bool:
   try:
