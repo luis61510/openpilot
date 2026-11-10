@@ -3,13 +3,74 @@ on:
   pull_request:
     paths:
       - 'tinygrad_repo'
+      - 'openpilot/sunnypilot/modeld_v2/**'
   workflow_dispatch:
 
+env:
+  CI: 1
+  GIT_CONFIG_COUNT: 1
+  GIT_CONFIG_KEY_0: lfs.fetchexclude
+  GIT_CONFIG_VALUE_0: openpilot/selfdrive/modeld/models/big_driving_tinygrad.pkl
+
 jobs:
+  plain-artifact:
+    name: Plain artifact round trip and pickle converter
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: ${{ github.workspace }}/tinygrad_repo:${{ github.workspace }}
+      TINYGRAD_TESTS: 1
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./tools/op.sh setup
+      - name: Build openpilot
+        run: scons -j$(nproc)
+      - name: Compile, load, cache and fuse a model with the pinned tinygrad
+        env:
+          DEV: CPU
+        run: tools/op.sh test -v openpilot/sunnypilot/modeld_v2/tests/test_plain_artifact.py
+      - uses: ./.github/workflows/setup-amd-mock
+      - name: Convert a pickled USB+AMD jit and replay it under tinygrad's amd mock
+        env:
+          DEV: MOCKUSB+AMD
+          CHECK_OOB: 0
+          GMMU: 0
+        run: tools/op.sh test -v openpilot/sunnypilot/modeld_v2/tests/test_convert_upstream_pkl.py
+      - name: Resolve commaai's tinygrad pin, which their precompiled chestnut model is built and converted with
+        id: upstream-tg
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r sha url < <(gh api repos/commaai/openpilot/contents/tinygrad_repo --jq '.sha + " " + .submodule_git_url')
+          echo "commaai/openpilot master pins $url@$sha, ours is $(git rev-parse HEAD:tinygrad_repo)"
+          dir="$RUNNER_TEMP/upstream_tinygrad"
+          git init -q "$dir" && git -C "$dir" fetch -q --depth 1 "$url" "$sha" && git -C "$dir" checkout -q FETCH_HEAD
+          echo "path=$dir" >> "$GITHUB_OUTPUT"
+      - name: Convert a pickled USB+AMD jit under commaai's tinygrad, as the chestnut model build does
+        env:
+          DEV: MOCKUSB+AMD
+          CHECK_OOB: 0
+          GMMU: 0
+          PYTHONPATH: ${{ steps.upstream-tg.outputs.path }}:${{ github.workspace }}
+        run: tools/op.sh test -v openpilot/sunnypilot/modeld_v2/tests/test_convert_upstream_pkl.py
+      - name: Where tinygrad moved, for the helper or failure point named above
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          git fetch -q --depth=1 origin "${{ github.base_ref }}"
+          old=$(git rev-parse "origin/${{ github.base_ref }}:tinygrad_repo") new=$(git rev-parse HEAD:tinygrad_repo)
+          git -C tinygrad_repo fetch -q origin "$old" || true
+          echo "tinygrad_repo $old -> $new, in what helpers.py and plain_artifact_compiler.py read:"
+          git -C tinygrad_repo diff "$old" "$new" -- tinygrad/uop/ops.py tinygrad/engine/jit.py tinygrad/engine/realize.py tinygrad/device.py \
+            tinygrad/helpers.py tinygrad/dtype.py tinygrad/renderer/__init__.py
+          echo "and in what convert_upstream_pkl.py decodes:"
+          git -C tinygrad_repo diff --stat "$old" "$new" -- tinygrad/runtime/autogen/am/pm4_nv.py tinygrad/runtime/autogen/amd_gpu.py
+          git -C tinygrad_repo diff "$old" "$new" -- tinygrad/runtime/support/hcq2.py tinygrad/runtime/support/usb.py tinygrad/runtime/ops_amd.py
+
   generate-matrix:
     runs-on: ubuntu-latest
     outputs:
       models: ${{ steps.set-matrix.outputs.models }}
+      chestnut: ${{ steps.set-matrix.outputs.chestnut }}
+      qcom: ${{ steps.set-matrix.outputs.qcom }}
     steps:
       - uses: actions/checkout@v4
       - name: Fetch and Parse json
@@ -21,16 +82,22 @@ jobs:
           with open("openpilot/sunnypilot/models/fetcher.py", "r") as f:
             urls = re.findall(r"MODEL_URL(?:_CHESTNUT)?\s*=\s*[\"'"'"']([^\"'"'"']+)[\"'"'"']", f.read())
 
-          artifacts = []
+          artifacts, chestnut, qcom = [], [], []
           for url in urls:
             data = json.loads(urllib.request.urlopen(url).read())
             for bundle in data.get("bundles", []):
               for model in bundle.get("models", []):
                 if "artifact" in model:
                   artifacts.append(model["artifact"])
+                  if "chestnut" in url:
+                    chestnut.append(model["artifact"])
+                  elif "tinygrad" in model["artifact"]["file_name"]:
+                    qcom.append(model["artifact"])
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(f"models={json.dumps(artifacts)}\n")
+            f.write(f"chestnut={json.dumps(chestnut)}\n")
+            f.write(f"qcom={json.dumps(qcom)}\n")
           '
 
   test-model:
@@ -47,39 +114,101 @@ jobs:
         with:
           submodules: true
 
-      - name: Download Model Chunks in Parallel
+      - name: Download model
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODEL_URL: ${{ matrix.artifact.download_uri.url }}
+          MODEL_FILE: ${{ matrix.artifact.file_name }}
+        shell: bash
         run: |
-          mkdir -p /tmp/model_chunks
-          echo '${{ toJson(matrix.artifact.chunks) }}' > chunks.json
-
-          BASE_URL="${{ matrix.artifact.download_uri.url }}"
-          export BASE_DIR=$(dirname "$BASE_URL")
-
-          python3 -c '
-          import json, os
-          with open("chunks.json") as f:
-            chunks = json.load(f)
-          manifest_path = f"/tmp/model_chunks/${{ matrix.artifact.file_name }}.chunkmanifest"
-          with open(manifest_path, "w") as f:
-            f.write(str(len(chunks)))
-          base_dir = os.environ["BASE_DIR"]
-          hf_token = os.environ.get("HF_TOKEN", "")
-          with open("/tmp/curl_config.txt", "w") as f:
-            for c in chunks:
-              fn = c["file_name"]
-              f.write(f"url = \"{base_dir}/{fn}\"\noutput = \"/tmp/model_chunks/{fn}\"\n")
-              if hf_token:
-                f.write(f"header = \"Authorization: Bearer {hf_token}\"\n")
-          '
-          curl -Z --parallel-immediate --parallel-max 12 --retry 3 --retry-all-errors -s -S -f -L -K /tmp/curl_config.txt
+          mkdir -p /tmp/models
+          AUTH=()
+          if [ -n "$HF_TOKEN" ]; then AUTH=(-H "Authorization: Bearer $HF_TOKEN"); fi
+          curl --retry 3 --retry-all-errors -s -S -f -L "${AUTH[@]}" -o "/tmp/models/$MODEL_FILE" "$MODEL_URL"
 
       - name: Run Model Compatibility Test
         env:
           MODEL_BASE_NAME: ${{ matrix.artifact.file_name }}
-          MODEL_CHUNK_DIR: "/tmp/model_chunks"
+          MODEL_DIR: "/tmp/models"
         run: |
           export PYTHONPATH="$GITHUB_WORKSPACE/tinygrad_repo:$GITHUB_WORKSPACE:$PYTHONPATH"
           python3 -m pip uninstall -y tinygrad || uv pip uninstall -y tinygrad --system || true
-          python3 -m pytest openpilot/sunnypilot/modeld_v2/tests/test_models.py
+          python3 -m pytest openpilot/sunnypilot/modeld_v2/tests/test_plain_models.py
+
+  chestnut-mock-parity:
+    name: Mock parity ${{ matrix.artifact.file_name }}
+    needs: generate-matrix
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: ${{ fromJson(needs.generate-matrix.outputs.chestnut) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: ./.github/workflows/setup-amd-mock
+        with:
+          emu_cache: ${{ matrix.artifact.file_name }}
+      - run: python3 -m pip install -q numpy
+      - name: Download model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODEL_URL: ${{ matrix.artifact.download_uri.url }}
+          MODEL_SHA: ${{ matrix.artifact.download_uri.sha256 }}
+        shell: bash
+        run: |
+          AUTH=()
+          if [ -n "$HF_TOKEN" ]; then AUTH=(-H "Authorization: Bearer $HF_TOKEN"); fi
+          curl --retry 3 --retry-all-errors -s -S -f -L "${AUTH[@]}" -o "$RUNNER_TEMP/model.pkl" "$MODEL_URL"
+          if [ -n "$MODEL_SHA" ]; then echo "$MODEL_SHA  $RUNNER_TEMP/model.pkl" | sha256sum -c -; fi
+      - name: Replay its check frame on the amd mock and require the chestnut's result bit for bit
+        env:
+          PYTHONPATH: ${{ github.workspace }}/tinygrad_repo:${{ github.workspace }}
+        run: python3 -m openpilot.sunnypilot.modeld_v2.mock_parity check "$RUNNER_TEMP/model.pkl"
+
+  qcom-mock-parity:
+    name: QCOM mock parity ${{ matrix.artifact.file_name }}
+    needs: generate-matrix
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: ${{ fromJson(needs.generate-matrix.outputs.qcom) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install -q numpy tinymesa==25.2.7.2
+      - name: Download model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODEL_URL: ${{ matrix.artifact.download_uri.url }}
+          MODEL_SHA: ${{ matrix.artifact.download_uri.sha256 }}
+        shell: bash
+        run: |
+          AUTH=()
+          if [ -n "$HF_TOKEN" ]; then AUTH=(-H "Authorization: Bearer $HF_TOKEN"); fi
+          curl --retry 3 --retry-all-errors -s -S -f -L "${AUTH[@]}" -o "$RUNNER_TEMP/model.pkl" "$MODEL_URL"
+          if [ -n "$MODEL_SHA" ]; then echo "$MODEL_SHA  $RUNNER_TEMP/model.pkl" | sha256sum -c -; fi
+      - name: Replay its check frame on the qcom mock and require the comma device's result bit for bit
+        env:
+          DEV: MOCK+QCOM
+          PYTHONPATH: ${{ github.workspace }}/tinygrad_repo:${{ github.workspace }}
+        run: python3 -m openpilot.sunnypilot.modeld_v2.mock_parity check "$RUNNER_TEMP/model.pkl"
+
+  chestnut-mock-build-parity:
+    name: Chestnut build on the amd mock = chestnut runner build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: ./.github/workflows/setup-amd-mock
+        with:
+          emu_cache: chestnut-build-parity
+      - run: python3 -m pip install -q numpy zstandard
+      - uses: ./.github/workflows/chestnut-build-parity
