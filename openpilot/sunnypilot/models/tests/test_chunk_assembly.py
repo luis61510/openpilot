@@ -23,6 +23,7 @@ def _manager(interrupted=lambda: False):
 
 def _artifact(data: bytes, chunks: int):
   return SimpleNamespace(
+    fileName="test_model.pkl",
     chunks=[object() for _ in range(chunks)],
     downloadUri=SimpleNamespace(sha256=hashlib.sha256(data).hexdigest()),
   )
@@ -52,7 +53,7 @@ def test_chunk_assembly_produces_verified_plain_file_and_removes_parts(tmp_path)
 def test_chunk_assembly_rejects_wrong_full_hash_and_keeps_chunks(tmp_path):
   base = str(tmp_path / "bad_model.pkl")
   parts = [b"part one", b"part two"]
-  artifact = SimpleNamespace(chunks=[object(), object()], downloadUri=SimpleNamespace(sha256="0" * 64))
+  artifact = SimpleNamespace(fileName="bad_model.pkl", chunks=[object(), object()], downloadUri=SimpleNamespace(sha256="0" * 64))
 
   for i, part in enumerate(parts):
     with open(get_chunk_name(base, i, len(parts)), "wb") as f:
