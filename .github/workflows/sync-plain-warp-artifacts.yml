@@ -1,0 +1,73 @@
+name: Sync Plain Warp Artifacts from Sunnypilot
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-warp-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this test branch with Git LFS
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          lfs: true
+          fetch-depth: 0
+
+      - name: Checkout upstream Plain Warp artifacts
+        uses: actions/checkout@v4
+        with:
+          repository: sunnypilot/sunnypilot
+          ref: master
+          path: upstream
+          lfs: true
+          fetch-depth: 1
+
+      - name: Copy and verify four camera / device warp artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="upstream/openpilot/sunnypilot/modeld_v2/models"
+          dst="openpilot/sunnypilot/modeld_v2/models"
+          mkdir -p "$dst"
+          files=(
+            driving_warp_1928x1208_tinygrad.pkl
+            driving_warp_1344x760_tinygrad.pkl
+            big_driving_warp_1928x1208_tinygrad.pkl
+            big_driving_warp_1344x760_tinygrad.pkl
+          )
+          for file in "${files[@]}"; do
+            test -s "$src/$file"
+            cp "$src/$file" "$dst/$file"
+            python3 - "$dst/$file" <<'PY'
+          import os, sys
+          path = sys.argv[1]
+          with open(path, "rb") as f:
+            magic = f.read(8)
+          if magic != b"SPTGPLN1":
+            raise SystemExit(f"{path}: expected Plain Artifact magic SPTGPLN1, got {magic!r}")
+          size = os.path.getsize(path)
+          if size < 100_000:
+            raise SystemExit(f"{path}: suspiciously small LFS payload ({size} bytes)")
+          print(f"verified {path}: {size:,} bytes, Plain Artifact")
+          PY
+          done
+
+      - name: Commit and push verified LFS artifacts to this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add openpilot/sunnypilot/modeld_v2/models/*.pkl
+          if git diff --cached --quiet; then
+            echo "Warp artifacts already match upstream; nothing to commit."
+            exit 0
+          fi
+          git commit -m "models: sync Plain Artifact warp bundles from upstream"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
