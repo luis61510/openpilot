@@ -12,6 +12,7 @@ import numpy as np
 
 from openpilot.common.basedir import BASEDIR
 from openpilot.selfdrive.modeld.helpers import MODELS_DIR
+from openpilot.sunnypilot.modeld_v2.frame_fusion import pack_layout
 from openpilot.sunnypilot.modeld_v2.compile_modeld import (POLICY_INPUTS, derive_frame_skip,
                                                            make_split_input_queues, make_supercombo_input_queues)
 from openpilot.sunnypilot.modeld_v2.stock_dependencies import make_input_queues as stock_make_input_queues, nv12_copy_size
