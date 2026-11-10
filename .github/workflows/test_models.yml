@@ -5,6 +5,8 @@ on:
       - 'tinygrad_repo'
       - 'openpilot/sunnypilot/modeld_v2/**'
       - 'openpilot/sunnypilot/models/**'
+      - 'openpilot/selfdrive/modeld/**'
+      - 'openpilot/common/hardware/usb.py'
   workflow_dispatch:
 
 env:
