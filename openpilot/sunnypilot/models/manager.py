@@ -8,6 +8,7 @@ See the LICENSE.md file in the root directory for more details.
 import asyncio
 import os
 import re
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -334,6 +335,45 @@ class ModelManagerSP:
     artifact.downloadProgress.speed = 0.0
     self._sync_artifact_progress(artifact)
 
+  def _remove_chunk_files(self, base_path: str, artifact) -> None:
+    from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+
+    for index in range(len(artifact.chunks)):
+      chunk_path = get_chunk_name(base_path, index, len(artifact.chunks))
+      if os.path.isfile(chunk_path):
+        os.remove(chunk_path)
+    manifest_path = get_manifest_path(base_path)
+    if os.path.isfile(manifest_path):
+      os.remove(manifest_path)
+
+  async def _assemble_chunked_artifact(self, base_path: str, artifact) -> None:
+    from openpilot.common.file_chunker import get_chunk_name
+
+    num_chunks = len(artifact.chunks)
+    temp_path = f"{base_path}.assembling"
+
+    def assemble() -> None:
+      with open(temp_path, "wb") as output:
+        for index in range(num_chunks):
+          if self._download_interrupted():
+            raise DownloadCancelled("Download cancelled during chunk assembly")
+          chunk_path = get_chunk_name(base_path, index, num_chunks)
+          with open(chunk_path, "rb") as chunk_file:
+            shutil.copyfileobj(chunk_file, output, length=8 * 1024 * 1024)
+
+    try:
+      loop = asyncio.get_running_loop()
+      await loop.run_in_executor(None, assemble)
+      expected_hash = artifact.downloadUri.sha256
+      if expected_hash and not await verify_file(temp_path, expected_hash):
+        raise ValueError(f"Full artifact hash validation failed after assembling {artifact.fileName}")
+      os.replace(temp_path, base_path)
+      self._remove_chunk_files(base_path, artifact)
+      cloudlog.info(f"Assembled {num_chunks} chunks into {artifact.fileName}")
+    finally:
+      if os.path.isfile(temp_path):
+        os.remove(temp_path)
+
   async def _process_artifact(self, artifact, destination_path: str) -> None:
     if not artifact.downloadUri.uri:
       return None
@@ -352,18 +392,24 @@ class ModelManagerSP:
       is_cached = False
       valid_chunks: set[int] = set()
       if len(artifact.chunks) > 0:
-        from openpilot.common.file_chunker import get_chunk_name
-        num_chunks = len(artifact.chunks)
-        for i, chunk in enumerate(artifact.chunks):
-          if self._download_interrupted():
-            raise DownloadCancelled("Download cancelled")
-          if await verify_file(get_chunk_name(full_path, i, num_chunks), chunk.sha256):
-            valid_chunks.add(i)
-          artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.verifying
-          artifact.downloadProgress.progress = (len(valid_chunks) / num_chunks) * 100
-          self._sync_artifact_progress(artifact)
-          self._report_status()
-        is_cached = len(valid_chunks) == num_chunks
+        if expected_hash and await verify_file(full_path, expected_hash):
+          is_cached = True
+          self._remove_chunk_files(full_path, artifact)
+        else:
+          from openpilot.common.file_chunker import get_chunk_name
+          num_chunks = len(artifact.chunks)
+          for i, chunk in enumerate(artifact.chunks):
+            if self._download_interrupted():
+              raise DownloadCancelled("Download cancelled")
+            if await verify_file(get_chunk_name(full_path, i, num_chunks), chunk.sha256):
+              valid_chunks.add(i)
+            artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.verifying
+            artifact.downloadProgress.progress = (len(valid_chunks) / num_chunks) * 100
+            self._sync_artifact_progress(artifact)
+            self._report_status()
+          if len(valid_chunks) == num_chunks:
+            await self._assemble_chunked_artifact(full_path, artifact)
+            is_cached = True
       else:
         if await verify_file(full_path, expected_hash):
           is_cached = True
@@ -384,6 +430,7 @@ class ModelManagerSP:
           chunk_path = get_chunk_name(full_path, i, len(artifact.chunks))
           if not await verify_file(chunk_path, chunk.sha256):
             raise ValueError(f"Hash validation failed for chunk {i+1} of {filename}")
+        await self._assemble_chunked_artifact(full_path, artifact)
       else:
         await self._download_file(url, full_path, artifact)
         if not await verify_file(full_path, expected_hash):
