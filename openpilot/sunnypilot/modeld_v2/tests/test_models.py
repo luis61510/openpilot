@@ -47,6 +47,8 @@ class TestLegacyModels(unittest.TestCase):
       bundle = load_model(base_path, {"QCOM": "CPU", "AMD": "CPU"}, verify=False, cache=False)
       jits = [value for value in bundle.values() if isinstance(value, PlainJit)]
       assert "metadata" in bundle and jits and all(len(jit.captured.linear.src) > 0 for jit in jits)
+      if expected_device == "AMD":
+        assert bundle["metadata"].get("warp_dev") == "AMD", f"Chestnut model must run warp on AMD: {base_name}"
       return
     if os.environ.get("MODEL_EXPECTED_DEVICE") == "AMD":
       self.fail(f"Chestnut model is not in the expected plain Tinygrad format: {base_name}")
