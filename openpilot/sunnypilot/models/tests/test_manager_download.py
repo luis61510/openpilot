@@ -40,6 +40,8 @@ def sha256(data: bytes) -> str:
 class DownloadHandler(http.server.BaseHTTPRequestHandler):
   """Serves the fixture bodies. Class attributes are reset per test."""
   request_paths: list[str] = []
+  range_requests: list[tuple[str, str]] = []
+  supports_ranges = False
   fail_paths: dict[str, int] = {}
   stall_paths: set[str] = set()
   stall_event: threading.Event | None = None
@@ -57,6 +59,9 @@ class DownloadHandler(http.server.BaseHTTPRequestHandler):
 
   def do_GET(self):
     type(self).request_paths.append(self.path)
+    range_header = self.headers.get('Range')
+    if range_header:
+      type(self).range_requests.append((self.path, range_header))
 
     status = type(self).fail_paths.get(self.path)
     if status:
@@ -70,7 +75,15 @@ class DownloadHandler(http.server.BaseHTTPRequestHandler):
       self.end_headers()
       return
 
-    self.send_response(200)
+    status_code = 200
+    if range_header and type(self).supports_ranges:
+      start, end = (int(v) for v in range_header.removeprefix("bytes=").split("-", 1))
+      body = body[start:end + 1]
+      status_code = 206
+      self.send_response(status_code)
+      self.send_header('Content-Range', f'bytes {start}-{end}/{len(self._body_for(self.path))}')
+    else:
+      self.send_response(status_code)
     self.send_header('Content-Length', str(len(body)))
     self.end_headers()
 
@@ -89,6 +102,8 @@ class ManagerDownloadTestBase(OpenpilotTestCase):
   def setUp(self):
     super().setUp()
     DownloadHandler.request_paths = []
+    DownloadHandler.range_requests = []
+    DownloadHandler.supports_ranges = False
     DownloadHandler.fail_paths = {}
     DownloadHandler.stall_paths = set()
     DownloadHandler.stall_event = None
@@ -162,6 +177,21 @@ class TestManagerDownload(ManagerDownloadTestBase):
         written = f.read()
       assert written == WHOLE_BODY
       assert sha256(written) == artifact.downloadUri.sha256
+      assert artifact.fileName not in self.manager._download_start_times
+    self.run_with_server(body)
+
+  def test_download_file_uses_parallel_byte_ranges(self):
+    def body():
+      artifact = self.make_artifact(chunked=False)
+      path = os.path.join(self.dest, artifact.fileName)
+      DownloadHandler.supports_ranges = True
+      with mock.patch.object(manager_module, "PIECE_SIZE", 3000):
+        asyncio.run(self.manager._download_file(artifact.downloadUri.uri, path, artifact))
+      with open(path, 'rb') as f:
+        assert f.read() == WHOLE_BODY
+      # One size probe plus three independently fetched pieces.
+      assert len(DownloadHandler.range_requests) == 4, DownloadHandler.range_requests
+      assert artifact.downloadProgress.speed > 0
       assert artifact.fileName not in self.manager._download_start_times
     self.run_with_server(body)
 
