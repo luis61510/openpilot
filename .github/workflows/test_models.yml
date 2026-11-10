@@ -25,6 +25,25 @@ jobs:
       - run: ./tools/op.sh setup
       - name: Build openpilot
         run: scons -j$(nproc)
+      - name: Load driver-monitoring OOB model and warps with the pinned Tinygrad ABI
+        run: |
+          python3 - <<'PY'
+          from openpilot.common.file_chunker import open_file_chunked
+          from openpilot.selfdrive.modeld.helpers import MODELS_DIR
+          from openpilot.sunnypilot.modeld_v2.helpers import load_oob
+
+          model_path = MODELS_DIR / "dmonitoring_model_tinygrad.pkl"
+          model = load_oob(open_file_chunked(model_path))
+          assert "run" in model and "input_specs" in model and "output_specs" in model
+
+          for camera in ("1928x1208", "1344x760"):
+            warp_path = MODELS_DIR / f"dm_warp_{camera}_tinygrad.pkl"
+            warp = load_oob(open_file_chunked(warp_path))
+            assert "run" in warp
+            print(f"loaded driver-monitoring warp: {warp_path.name}")
+
+          print("driver-monitoring OOB model and warp deserialization passed")
+          PY
       - name: Compile, load, cache and fuse a model with the pinned tinygrad
         env:
           DEV: CPU
