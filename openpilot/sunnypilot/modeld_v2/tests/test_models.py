@@ -9,7 +9,7 @@ import os
 import unittest
 from unittest.mock import patch
 from openpilot.common.file_chunker import open_file_chunked
-from openpilot.sunnypilot.modeld_v2.helpers import load_oob
+from openpilot.sunnypilot.modeld_v2.helpers import is_plain_artifact, load_oob, read_parts
 from tinygrad.device import Device
 
 
@@ -21,10 +21,20 @@ class TestLegacyModels(unittest.TestCase):
     chunk_dir = os.environ.get("MODEL_CHUNK_DIR", "/tmp/model_chunks")
     base_path = os.path.join(chunk_dir, base_name)
 
+    if is_plain_artifact(base_path):
+      try:
+        parts, extras = read_parts(base_path)
+      except Exception as error:
+        self.fail(f"Failed to parse plain Tinygrad artifact {base_path}: {error}")
+      assert parts, "Plain artifact contains no compiled model parts"
+      assert "metadata" in extras, "Plain artifact metadata is missing"
+      assert "input_specs" in extras, "Plain artifact input specs are missing"
+      return
+
     try:
       f = open_file_chunked(base_path)
     except Exception as error:
-      self.fail(f"Failed to open chunked file {base_path}: {error}")
+      self.fail(f"Failed to open legacy chunked file {base_path}: {error}")
     self.addCleanup(f.close)
 
     real_getitem = Device.__class__.__getitem__
