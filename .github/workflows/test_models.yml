@@ -27,10 +27,13 @@ jobs:
             bundles = data.get("bundles", [])
             # Exercise every Chestnut artifact, plus the user's CD210 QCOM fallback model.
             selected = bundles if "chestnut" in url else [b for b in bundles if b.get("ref") == "5b6436a90cf6902b8aaa71c2b6f3d7164d8ae391"]
+            expected_device = "AMD" if "chestnut" in url else "QCOM"
             for bundle in selected:
               for model in bundle.get("models", []):
                 if "artifact" in model:
-                  artifacts.append(model["artifact"])
+                  artifact = dict(model["artifact"])
+                  artifact["expected_device"] = expected_device
+                  artifacts.append(artifact)
           print(f"Testing {len(artifacts)} artifacts")
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
@@ -96,6 +99,7 @@ jobs:
         env:
           MODEL_BASE_NAME: ${{ matrix.artifact.file_name }}
           MODEL_CHUNK_DIR: "/tmp/model_chunks"
+          MODEL_EXPECTED_DEVICE: ${{ matrix.artifact.expected_device }}
         run: |
           export PYTHONPATH="$GITHUB_WORKSPACE/tinygrad_repo:$GITHUB_WORKSPACE:$PYTHONPATH"
           python3 -m pip uninstall -y tinygrad || uv pip uninstall -y tinygrad --system || true
