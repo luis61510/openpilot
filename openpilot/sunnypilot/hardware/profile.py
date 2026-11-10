@@ -21,7 +21,7 @@ PANDA_TYPE_TRES = b"\x09"
 
 def infer_hardware_profile(model_file: Path | None = None) -> HardwareProfile:
   try:
-    raw_model = (model_file or HARDWARE_MODEL_FILE).read_bytes().rstrip(b"\x00\r\n ")
+    (model_file or HARDWARE_MODEL_FILE).read_bytes().rstrip(b"\x00\r\n ")
   except OSError:
     return HardwareProfile.STANDARD
   # C3 and C3XL can report the same device-tree name. Only the explicit
