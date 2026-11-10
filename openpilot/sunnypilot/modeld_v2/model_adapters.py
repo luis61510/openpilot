@@ -11,7 +11,6 @@ import pickle
 import numpy as np
 
 from openpilot.common.basedir import BASEDIR
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR
 from openpilot.sunnypilot.modeld_v2.helpers import is_plain_artifact, load_model
 from openpilot.sunnypilot.modeld_v2.compile_modeld import (POLICY_INPUTS, derive_frame_skip,
                                                            make_split_input_queues, make_supercombo_input_queues)
@@ -66,7 +65,7 @@ class BaseModelAdapter:
       self.warp_frame_size = self.nv12_info[3]
       return self.jits[(self.cam_w, self.cam_h)]
 
-    warp_dir = MODELS_DIR if self.is_native else Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
+    warp_dir = Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
     warp_name = f'{"big_" if self.chestnut else ""}driving_warp_{self.cam_w}x{self.cam_h}_tinygrad.pkl'
     warp_path = warp_dir / warp_name
     if is_plain_artifact(warp_path):
