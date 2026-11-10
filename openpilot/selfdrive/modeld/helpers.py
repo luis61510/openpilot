@@ -4,6 +4,8 @@ import struct
 import time
 from pathlib import Path
 
+from openpilot.common.basedir import BASEDIR
+
 from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
 from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, USB_DEVICES_PATH, is_chestnut_usb_id
 
@@ -68,7 +70,8 @@ def compiled_model_file(path: Path, expected_chunks: int | None = None) -> bool:
 
 
 def chestnut_warps_compiled() -> bool:
-  return all(_compiled_file(MODELS_DIR / f'big_driving_warp_{size}_tinygrad.pkl') for size in ('1344x760', '1928x1208'))
+  warp_dir = Path(BASEDIR) / 'openpilot/sunnypilot/modeld_v2/models'
+  return all(_compiled_file(warp_dir / f'big_driving_warp_{size}_tinygrad.pkl') for size in ('1344x760', '1928x1208'))
 
 
 def chestnut_compiled() -> bool:
