@@ -16,7 +16,8 @@ from setproctitle import setproctitle
 
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
-from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path
+from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path, wait_for_chestnut
+from openpilot.common.hardware.usb import cable_connected
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -285,9 +286,12 @@ def main(demo=False):
   setproctitle(PROCESS_NAME)
   config_realtime_process(7, 54)
 
-  CHESTNUT = chestnut_present()
+  # Do not select the AMD path merely because a USB eGPU is present: a matching
+  # Chestnut bundle must also be installed. This avoids QCOM artifacts being loaded on AMD.
+  CHESTNUT = _find_driving_pkl(get_active_bundle(chestnut=True)) is not None and (chestnut_present() or cable_connected())
   if CHESTNUT:
-    os.environ['HCQDEV_WAIT_TIMEOUT_MS'] = '3000'
+    from tinygrad.runtime.ops_amd import AMDDevice
+    AMDDevice.wait_timeout_ms = 3000
 
   params = Params()
   params.put_bool("ChestnutLoading", CHESTNUT)
@@ -325,6 +329,8 @@ def main(demo=False):
     def load_big():
       nonlocal big_model
       try:
+        # Wait for the Chestnut PCIe/USB link before Tinygrad initializes the AMD device.
+        wait_for_chestnut()
         m, load_err = load_with_retry(
           lambda: ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True))
         if m is None:
