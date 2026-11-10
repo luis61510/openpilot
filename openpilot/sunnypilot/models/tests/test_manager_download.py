@@ -185,7 +185,7 @@ class TestManagerDownload(ManagerDownloadTestBase):
       artifact = self.make_artifact(chunked=False)
       path = os.path.join(self.dest, artifact.fileName)
       DownloadHandler.supports_ranges = True
-      with mock.patch.object(manager_module, "PIECE_SIZE", 3000):
+      with mock.patch.object(manager_module, "PIECE_SIZE", 3000), mock.patch.object(manager_module, "SPEED_FLOOR", 1):
         asyncio.run(self.manager._download_file(artifact.downloadUri.uri, path, artifact))
       with open(path, 'rb') as f:
         assert f.read() == WHOLE_BODY
