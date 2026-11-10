@@ -9,21 +9,21 @@ import bisect
 import builtins
 import contextlib
 import dataclasses
+import enum
 import functools
 import hashlib
+import importlib
+import inspect
 import io
 import itertools
 import json
 import math
 import mmap
 import os
-import inspect
-import importlib
-import tempfile
-import shutil
-import enum
 import pickle
+import shutil
 import struct
+import tempfile
 
 MAGIC = b"SPTGPLN1"
 ALIGNMENT = 256
