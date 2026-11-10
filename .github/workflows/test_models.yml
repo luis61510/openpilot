@@ -4,6 +4,7 @@ on:
     paths:
       - 'tinygrad_repo'
       - 'openpilot/sunnypilot/modeld_v2/**'
+      - 'openpilot/sunnypilot/models/**'
   workflow_dispatch:
 
 env:
