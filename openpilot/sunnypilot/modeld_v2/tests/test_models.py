@@ -7,13 +7,25 @@ See the LICENSE.md file in the root directory for more details.
 
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+from openpilot.common.basedir import BASEDIR
 from openpilot.common.file_chunker import open_file_chunked
 from openpilot.sunnypilot.modeld_v2.helpers import PlainJit, is_plain_artifact, load_model, load_oob
 from tinygrad.device import Device
 
 
 class TestLegacyModels(unittest.TestCase):
+  def test_chestnut_warp_artifacts_load(self):
+    warp_dir = Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
+    for resolution in ("1344x760", "1928x1208"):
+      path = warp_dir / f"big_driving_warp_{resolution}_tinygrad.pkl"
+      if not is_plain_artifact(str(path)):
+        self.skipTest(f"Official Chestnut warp artifact is not installed: {path.name}")
+      bundle = load_model(str(path), {"AMD": "CPU", "QCOM": "CPU"}, verify=False, cache=False)
+      assert "metadata" in bundle and "input_specs" in bundle and "run" in bundle
+      assert any(isinstance(value, PlainJit) for value in bundle.values())
+
   def test_legacy_model_load(self):
     base_name = os.environ.get("MODEL_BASE_NAME")
     if not base_name:
