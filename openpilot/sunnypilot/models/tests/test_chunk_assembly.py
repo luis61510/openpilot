@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import os
+from collections.abc import Callable
 from types import SimpleNamespace
 
 import pytest
@@ -10,14 +11,14 @@ from openpilot.sunnypilot.models.manager import DownloadCancelled, ModelManagerS
 
 
 class _TestManager(ModelManagerSP):
-  def __init__(self, interrupted):
+  def __init__(self, interrupted: Callable[[], bool]) -> None:
     self._interrupted = interrupted
 
-  def _download_interrupted(self):
+  def _download_interrupted(self) -> bool:
     return self._interrupted()
 
 
-def _manager(interrupted=lambda: False):
+def _manager(interrupted: Callable[[], bool] = lambda: False) -> _TestManager:
   return _TestManager(interrupted)
 
 
