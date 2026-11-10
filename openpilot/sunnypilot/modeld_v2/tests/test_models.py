@@ -9,7 +9,7 @@ import os
 import unittest
 from unittest.mock import patch
 from openpilot.common.file_chunker import open_file_chunked
-from openpilot.sunnypilot.modeld_v2.helpers import is_plain_artifact, load_oob, read_parts
+from openpilot.sunnypilot.modeld_v2.helpers import PlainJit, is_plain_artifact, load_model, load_oob
 from tinygrad.device import Device
 
 
@@ -22,13 +22,9 @@ class TestLegacyModels(unittest.TestCase):
     base_path = os.path.join(chunk_dir, base_name)
 
     if is_plain_artifact(base_path):
-      try:
-        parts, extras = read_parts(base_path)
-      except Exception as error:
-        self.fail(f"Failed to parse plain Tinygrad artifact {base_path}: {error}")
-      assert parts, "Plain artifact contains no compiled model parts"
-      assert "metadata" in extras, "Plain artifact metadata is missing"
-      assert "input_specs" in extras, "Plain artifact input specs are missing"
+      bundle = load_model(base_path, {"QCOM": "CPU", "AMD": "CPU"}, verify=False, cache=False)
+      jits = [value for value in bundle.values() if isinstance(value, PlainJit)]
+      assert "metadata" in bundle and jits and all(len(jit.captured.linear.src) > 0 for jit in jits)
       return
 
     try:
