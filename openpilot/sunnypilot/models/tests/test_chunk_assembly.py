@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -37,7 +38,7 @@ def test_chunk_assembly_produces_verified_plain_file_and_removes_parts(tmp_path)
 
   with open(base, "rb") as f:
     assert f.read() == data
-  assert not __import__("os").path.exists(get_manifest_path(base))
+  assert not os.path.exists(get_manifest_path(base))
   assert all(not __import__("os").path.exists(get_chunk_name(base, i, len(parts))) for i in range(len(parts)))
   assert not __import__("os").path.exists(base + ".assembling")
 
