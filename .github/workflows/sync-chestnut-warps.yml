@@ -58,17 +58,18 @@ jobs:
           mkdir -p openpilot/sunnypilot/modeld_v2/models
           cp "$SRC"/*.pkl openpilot/sunnypilot/modeld_v2/models/
 
-      - name: Store warp binaries with Git LFS
+      - name: Publish verified warp binaries as GitHub release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git lfs install --local
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .gitattributes
-          git add openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1344x760_tinygrad.pkl openpilot/sunnypilot/modeld_v2/models/big_driving_warp_1928x1208_tinygrad.pkl openpilot/sunnypilot/modeld_v2/models/driving_warp_1344x760_tinygrad.pkl openpilot/sunnypilot/modeld_v2/models/driving_warp_1928x1208_tinygrad.pkl
-          if git diff --cached --quiet; then
-            echo "Official warp files already installed."
-            exit 0
-          fi
-          git commit -m "feat(egpu): add official Tinygrad warp artifacts"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          cd /tmp/official-warps/openpilot/sunnypilot/modeld_v2/models
+          gh release view egpu-warps-v1 --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || \
+            gh release create egpu-warps-v1 --repo "${GITHUB_REPOSITORY}" --title "eGPU Tinygrad warp assets v1" \
+              --notes "Official Sunnypilot Chestnut/QCOM Tinygrad warp artifacts. SHA256 values are enforced by the Comma runtime downloader."
+          gh release upload egpu-warps-v1 \
+            big_driving_warp_1344x760_tinygrad.pkl \
+            big_driving_warp_1928x1208_tinygrad.pkl \
+            driving_warp_1344x760_tinygrad.pkl \
+            driving_warp_1928x1208_tinygrad.pkl \
+            --repo "${GITHUB_REPOSITORY}" --clobber
