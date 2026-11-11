@@ -27,7 +27,11 @@ WARP_SHA256 = {
 def ensure_chestnut_warps(timeout: float = 12.) -> bool:
   """Fetch official warp assets atomically; never accept Git LFS pointer files."""
   warp_dir = Path(BASEDIR) / 'openpilot/sunnypilot/modeld_v2/models'
-  warp_dir.mkdir(parents=True, exist_ok=True)
+  deadline = time.monotonic() + timeout
+  try:
+    warp_dir.mkdir(parents=True, exist_ok=True)
+  except OSError:
+    return False
   for name, expected in WARP_SHA256.items():
     target = warp_dir / name
     if target.is_file():
@@ -40,7 +44,10 @@ def ensure_chestnut_warps(timeout: float = 12.) -> bool:
     url = f"https://github.com/{WARP_ASSET_REPO}/releases/download/{WARP_ASSET_TAG}/{name}"
     tmp_name = None
     try:
-      with urllib.request.urlopen(url, timeout=timeout) as response, tempfile.NamedTemporaryFile(
+      remaining = deadline - time.monotonic()
+      if remaining <= 0:
+        return False
+      with urllib.request.urlopen(url, timeout=remaining) as response, tempfile.NamedTemporaryFile(
         dir=warp_dir, prefix=f".{name}.", delete=False) as tmp:
         tmp_name = tmp.name
         digest = hashlib.sha256()
