@@ -1,7 +1,11 @@
+import hashlib
 import io
+import os
 import pickle
 import struct
+import tempfile
 import time
+import urllib.request
 from pathlib import Path
 
 from openpilot.common.basedir import BASEDIR
@@ -10,6 +14,55 @@ from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
 from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, USB_DEVICES_PATH, is_chestnut_usb_id
 
 MODELS_DIR = Path(__file__).resolve().parent / 'models'
+WARP_ASSET_TAG = "egpu-warps-v1"
+WARP_ASSET_REPO = "luis61510/openpilot"
+WARP_SHA256 = {
+  "big_driving_warp_1344x760_tinygrad.pkl": "f1689356ff8e516f87e3d75f6b53e66953a11ee5a97e859b4808c9a16bfe671b",
+  "big_driving_warp_1928x1208_tinygrad.pkl": "56cc9690e0e9fb719323d2c6646c1305e8bc6bbdfdc807724a605a0d0a37554b",
+  "driving_warp_1344x760_tinygrad.pkl": "4b22fd6bcb3a3e8a642e6866449dd9c30c12e694ff0741cad9e34e4b00d8c5fa",
+  "driving_warp_1928x1208_tinygrad.pkl": "9a17fd6acece4fab23784ef0f3f8bba28a049e9599e5e9e5ee7b36e4b1d24a6f",
+}
+
+
+def ensure_chestnut_warps(timeout: float = 12.) -> bool:
+  """Fetch official warp assets atomically; never accept Git LFS pointer files."""
+  warp_dir = Path(BASEDIR) / 'openpilot/sunnypilot/modeld_v2/models'
+  warp_dir.mkdir(parents=True, exist_ok=True)
+  complete = True
+  for name, expected in WARP_SHA256.items():
+    target = warp_dir / name
+    if target.is_file():
+      try:
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        if digest == expected:
+          continue
+      except OSError:
+        pass
+    complete = False
+    url = f"https://github.com/{WARP_ASSET_REPO}/releases/download/{WARP_ASSET_TAG}/{name}"
+    tmp_name = None
+    try:
+      with urllib.request.urlopen(url, timeout=timeout) as response, tempfile.NamedTemporaryFile(
+        dir=warp_dir, prefix=f".{name}.", delete=False) as tmp:
+        tmp_name = tmp.name
+        digest = hashlib.sha256()
+        while chunk := response.read(1024 * 1024):
+          digest.update(chunk)
+          tmp.write(chunk)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+      if digest.hexdigest() != expected:
+        raise ValueError(f"SHA256 mismatch for {name}")
+      os.replace(tmp_name, target)
+      tmp_name = None
+    except Exception:
+      if tmp_name:
+        try:
+          os.unlink(tmp_name)
+        except OSError:
+          pass
+      return False
+  return all(_compiled_file(warp_dir / name) for name in WARP_SHA256)
 
 
 def modeld_pkl_path(chestnut: bool):
