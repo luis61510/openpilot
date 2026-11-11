@@ -16,7 +16,7 @@ from setproctitle import setproctitle
 
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
-from openpilot.selfdrive.modeld.helpers import chestnut_present, chestnut_warps_compiled, modeld_pkl_path, wait_for_chestnut
+from openpilot.selfdrive.modeld.helpers import chestnut_present, chestnut_warps_compiled, ensure_chestnut_warps, modeld_pkl_path, wait_for_chestnut
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -276,8 +276,14 @@ def main(demo=False):
   params = Params()
   from openpilot.common.hardware.usb import cable_connected
   chestnut_bundle = get_active_bundle(params, chestnut=True)
-  CHESTNUT = (chestnut_bundle is not None and _find_driving_pkl(chestnut_bundle) is not None and
-              chestnut_warps_compiled() and (chestnut_present() or cable_connected()))
+  chestnut_hardware = chestnut_present() or cable_connected()
+  chestnut_model_ready = chestnut_bundle is not None and _find_driving_pkl(chestnut_bundle) is not None
+  warp_assets_ready = False
+  if chestnut_hardware and chestnut_model_ready:
+    warp_assets_ready = chestnut_warps_compiled() or ensure_chestnut_warps(timeout=12.)
+    if not warp_assets_ready:
+      cloudlog.warning("Chestnut warp assets unavailable or checksum invalid; falling back to QCOM")
+  CHESTNUT = chestnut_hardware and chestnut_model_ready and warp_assets_ready
   if CHESTNUT:
     from tinygrad.runtime.ops_amd import AMDDevice
     AMDDevice.wait_timeout_ms = 3000
