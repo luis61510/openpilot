@@ -73,3 +73,18 @@ jobs:
             driving_warp_1344x760_tinygrad.pkl \
             driving_warp_1928x1208_tinygrad.pkl \
             --repo "${GITHUB_REPOSITORY}" --clobber
+
+      - name: Verify published release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/release-check
+          gh release download egpu-warps-v1 --repo "${GITHUB_REPOSITORY}" --dir /tmp/release-check
+          cd /tmp/release-check
+          sha256sum -c <<'EOF'
+          f1689356ff8e516f87e3d75f6b53e66953a11ee5a97e859b4808c9a16bfe671b  big_driving_warp_1344x760_tinygrad.pkl
+          56cc9690e0e9fb719323d2c6646c1305e8bc6bbdfdc807724a605a0d0a37554b  big_driving_warp_1928x1208_tinygrad.pkl
+          4b22fd6bcb3a3e8a642e6866449dd9c30c12e694ff0741cad9e34e4b00d8c5fa  driving_warp_1344x760_tinygrad.pkl
+          9a17fd6acece4fab23784ef0f3f8bba28a049e9599e5e9e5ee7b36e4b1d24a6f  driving_warp_1928x1208_tinygrad.pkl
+          EOF
