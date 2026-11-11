@@ -28,7 +28,6 @@ def ensure_chestnut_warps(timeout: float = 12.) -> bool:
   """Fetch official warp assets atomically; never accept Git LFS pointer files."""
   warp_dir = Path(BASEDIR) / 'openpilot/sunnypilot/modeld_v2/models'
   warp_dir.mkdir(parents=True, exist_ok=True)
-  complete = True
   for name, expected in WARP_SHA256.items():
     target = warp_dir / name
     if target.is_file():
@@ -38,7 +37,6 @@ def ensure_chestnut_warps(timeout: float = 12.) -> bool:
           continue
       except OSError:
         pass
-    complete = False
     url = f"https://github.com/{WARP_ASSET_REPO}/releases/download/{WARP_ASSET_TAG}/{name}"
     tmp_name = None
     try:
@@ -124,7 +122,13 @@ def compiled_model_file(path: Path, expected_chunks: int | None = None) -> bool:
 
 def chestnut_warps_compiled() -> bool:
   warp_dir = Path(BASEDIR) / 'openpilot/sunnypilot/modeld_v2/models'
-  return all(_compiled_file(warp_dir / f'big_driving_warp_{size}_tinygrad.pkl') for size in ('1344x760', '1928x1208'))
+  for name in ("big_driving_warp_1344x760_tinygrad.pkl", "big_driving_warp_1928x1208_tinygrad.pkl"):
+    try:
+      if hashlib.sha256((warp_dir / name).read_bytes()).hexdigest() != WARP_SHA256[name]:
+        return False
+    except OSError:
+      return False
+  return True
 
 
 def chestnut_compiled() -> bool:
