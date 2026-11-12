@@ -504,6 +504,18 @@ class TestModelFetcherSources(OpenpilotTestCase):
     params.get.side_effect = get
     return params
 
+  def test_bundled_catalogs_are_available_without_network_or_params_cache(self):
+    params = mock.MagicMock()
+    params.get.return_value = None
+    fetcher = ModelFetcher(params)
+    with mock.patch.object(fetcher, "_fetch_and_cache_models", return_value=None):
+      qcom = fetcher.get_bundles_for_source("qcom")
+      chestnut = fetcher.get_bundles_for_source("chestnut")
+    assert len(qcom) == 78, f"expected 78 bundled QCOM models, got {len(qcom)}"
+    assert len(chestnut) == 22, f"expected 22 bundled Chestnut models, got {len(chestnut)}"
+    assert all(bundle.minimumSelectorVersion == helpers.REQUIRED_JSON_VERSION for bundle in qcom + chestnut)
+
+
   def test_active_source_follows_chestnut_presence(self):
     assert ModelFetcher.active_source(False) == "qcom"
     assert ModelFetcher.active_source(True) == "chestnut"
