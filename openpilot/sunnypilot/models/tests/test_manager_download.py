@@ -513,7 +513,12 @@ class TestModelFetcherSources(OpenpilotTestCase):
       chestnut = fetcher.get_bundles_for_source("chestnut")
     assert len(qcom) == 78, f"expected 78 bundled QCOM models, got {len(qcom)}"
     assert len(chestnut) == 22, f"expected 22 bundled Chestnut models, got {len(chestnut)}"
-    assert all(bundle.minimumSelectorVersion == helpers.REQUIRED_JSON_VERSION for bundle in qcom + chestnut)
+    all_bundles = qcom + chestnut
+    assert all(bundle.minimumSelectorVersion == helpers.REQUIRED_JSON_VERSION for bundle in all_bundles)
+    assert all(bundle.models for bundle in all_bundles), "every catalog bundle must contain at least one model"
+    assert all(bundle.runner == custom.ModelManagerSP.Runner.tinygrad for bundle in all_bundles)
+    refs = [bundle.ref for bundle in all_bundles]
+    assert len(refs) == len(set(refs)), "model refs must be unique across both hardware catalogs"
 
     # The UI can be opened before the offroad manager publishes its first message.
     ui_qcom = get_bundled_bundles(params, "qcom")
