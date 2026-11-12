@@ -169,20 +169,8 @@ class ModelFetcher:
   def _get_bundled_models(self, source: str) -> list[custom.ModelManagerSP.ModelBundle]:
     """Load the versioned model catalog shipped with openpilot as an offline fallback."""
     if source not in self._bundled_models:
-      filename = "driving_models_chestnut_v28.json" if source == "chestnut" else "driving_models_v25.json"
-      manifest_path = Path(__file__).parent / "data" / filename
-      try:
-        with manifest_path.open(encoding="utf-8") as manifest_file:
-          manifest = json.load(manifest_file)
-        self._bundled_models[source] = self.model_parser.parse_models(manifest)
-        if self._bundled_models[source]:
-          # Persist the bundled snapshot with a sync timestamp. Without this,
-          # an offline fresh install would retry the network on every manager tick.
-          self.model_caches[source].set(manifest)
-        cloudlog.info(f"Loaded bundled {source} model catalog: {len(self._bundled_models[source])} bundles")
-      except Exception:
-        cloudlog.exception(f"Failed to load bundled model catalog for {source}")
-        self._bundled_models[source] = []
+      self._bundled_models[source] = get_bundled_bundles(self.params, source)
+      cloudlog.info(f"Loaded bundled {source} model catalog: {len(self._bundled_models[source])} bundles")
     return self._bundled_models[source]
 
   def _fetch_and_cache_models(self, source: str) -> list[custom.ModelManagerSP.ModelBundle] | None:
@@ -278,6 +266,30 @@ class ModelFetcher:
       cloudlog.warning(f"Using bundled offline model catalog for {source}")
       return bundled_bundles
     cloudlog.error(f"No remote, cached, or bundled models available for {source}")
+    return []
+
+
+def get_bundled_bundles(params: Params, source: str) -> list[custom.ModelManagerSP.ModelBundle]:
+  """Load the shipped catalog when the manager cache is not ready yet."""
+  if source not in ModelFetcher.MODEL_SOURCES:
+    cloudlog.warning(f"Unknown model source for bundled catalog: {source}")
+    return []
+  filename = "driving_models_chestnut_v28.json" if source == "chestnut" else "driving_models_v25.json"
+  manifest_path = Path(__file__).parent / "data" / filename
+  try:
+    with manifest_path.open(encoding="utf-8") as manifest_file:
+      manifest = json.load(manifest_file)
+    bundles = ModelParser.parse_models(manifest)
+    if bundles:
+      _, suffix = ModelFetcher.MODEL_SOURCES[source]
+      try:
+        ModelCache(params, suffix=suffix).set(manifest)
+      except Exception:
+        # The parsed catalog is still useful to the UI even if Params is read-only.
+        cloudlog.exception(f"Failed to cache bundled model catalog for {source}")
+    return bundles
+  except Exception:
+    cloudlog.exception(f"Failed to load bundled model catalog for {source}")
     return []
 
 
