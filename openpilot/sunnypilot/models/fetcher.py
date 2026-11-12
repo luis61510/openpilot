@@ -5,12 +5,12 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 
-import time
-import os
 import json
+import os
+import time
 from pathlib import Path
 import requests
-from requests.exceptions import (SSLError, RequestException, HTTPError)
+from requests.exceptions import HTTPError, RequestException, SSLError
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware.hw import Paths
