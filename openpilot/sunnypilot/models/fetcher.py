@@ -231,17 +231,27 @@ class ModelFetcher:
         cloudlog.warning(f"Cached models for {source} not valid; refetching once")
 
     fetched_bundles = self._fetch_and_cache_models(source)
-    if fetched_bundles is not None:
+    if fetched_bundles:
       return fetched_bundles
+    if fetched_bundles == []:
+      # A successful HTTP response can still produce an empty catalog when the
+      # manifest schema/version is incompatible with this selector. Do not let
+      # that empty result hide a previously usable cache.
+      cloudlog.warning(f"Fresh model manifest for {source} produced no compatible bundles; keeping cached catalog")
 
     if not cached_data:
       cloudlog.warning("Failed to fetch fresh data and no cache available")
-
-    cloudlog.warning("Failed to fetch fresh data. Using expired cache as fallback")
-    try:
-      return self.model_parser.parse_models(cached_data)
-    except Exception:
       return []
+
+    cloudlog.warning("Failed to fetch fresh data. Using cached models as fallback")
+    try:
+      cached_bundles = self.model_parser.parse_models(cached_data)
+      if cached_bundles:
+        return cached_bundles
+      cloudlog.warning(f"Cached models for {source} also have no compatible bundles")
+    except Exception:
+      cloudlog.exception(f"Failed to parse cached models for {source}")
+    return []
 
 
 def get_cached_bundles(params: Params, source: str) -> list[custom.ModelManagerSP.ModelBundle]:
