@@ -33,8 +33,14 @@ def active_source() -> str:
 
 
 def bundles_for_source(source: str):
+  # Prefer the live manager message for the active hardware slot. During startup,
+  # service restarts, or a delayed modelManagerSP publication it can be empty even
+  # though the manifest has already been fetched and cached. Fall back to the
+  # source-specific Params cache so the selector remains usable.
   if source == active_source():
-    return ui_state.sm["modelManagerSP"].availableBundles
+    available = ui_state.sm["modelManagerSP"].availableBundles
+    if available:
+      return available
   return get_cached_bundles(ui_state.params, source)
 
 
