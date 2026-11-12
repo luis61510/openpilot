@@ -508,7 +508,9 @@ class TestModelFetcherSources(OpenpilotTestCase):
     params = mock.MagicMock()
     params.get.return_value = None
     fetcher = ModelFetcher(params)
-    with mock.patch.object(fetcher, "_fetch_and_cache_models", return_value=None):
+    with tempfile.TemporaryDirectory() as model_root, \
+         mock.patch("openpilot.sunnypilot.models.fetcher.Paths.model_root", return_value=model_root), \
+         mock.patch.object(fetcher, "_fetch_and_cache_models", return_value=None):
       qcom = fetcher.get_bundles_for_source("qcom")
       chestnut = fetcher.get_bundles_for_source("chestnut")
     assert len(qcom) == 78, f"expected 78 bundled QCOM models, got {len(qcom)}"
@@ -521,8 +523,10 @@ class TestModelFetcherSources(OpenpilotTestCase):
     assert len(refs) == len(set(refs)), "model refs must be unique across both hardware catalogs"
 
     # The UI can be opened before the offroad manager publishes its first message.
-    ui_qcom = get_bundled_bundles(params, "qcom")
-    ui_chestnut = get_bundled_bundles(params, "chestnut")
+    with tempfile.TemporaryDirectory() as model_root, \
+         mock.patch("openpilot.sunnypilot.models.fetcher.Paths.model_root", return_value=model_root):
+      ui_qcom = get_bundled_bundles(params, "qcom")
+      ui_chestnut = get_bundled_bundles(params, "chestnut")
     assert len(ui_qcom) == 78
     assert len(ui_chestnut) == 22
 
