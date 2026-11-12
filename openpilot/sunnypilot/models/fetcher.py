@@ -95,8 +95,11 @@ class ModelParser:
 
   @staticmethod
   def parse_models(json_data: dict) -> list[custom.ModelManagerSP.ModelBundle]:
-    found_bundles = [ModelParser._parse_bundle(bundle) for bundle in json_data.get("bundles", [])]
-    return [bundle for bundle in found_bundles if is_bundle_version_compatible(bundle.to_dict())]
+    # Filter using the raw manifest before converting to cereal. This avoids
+    # relying on cereal's to_dict() field naming, which may differ by runtime.
+    compatible_bundles = [bundle for bundle in json_data.get("bundles", [])
+                          if is_bundle_version_compatible(bundle)]
+    return [ModelParser._parse_bundle(bundle) for bundle in compatible_bundles]
 
 
 class ModelCache:

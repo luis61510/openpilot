@@ -54,7 +54,13 @@ def is_bundle_version_compatible(bundle: dict) -> bool:
   required to load the model. This function ensures that:
     the bundle MUST match the `REQUIRED_JSON_VERSION` set here in helpers.
   """
-  return bundle.get("minimumSelectorVersion", 0) == REQUIRED_JSON_VERSION
+  # Accept both cereal's camelCase representation and the source JSON's
+  # snake_case key. The manifest itself uses minimum_selector_version.
+  version = bundle.get("minimumSelectorVersion", bundle.get("minimum_selector_version", 0))
+  try:
+    return int(version) == REQUIRED_JSON_VERSION
+  except (TypeError, ValueError):
+    return False
 
 
 def _bundle_artifacts(bundle: custom.ModelManagerSP.ModelBundle) -> list[tuple[str, str]]:
