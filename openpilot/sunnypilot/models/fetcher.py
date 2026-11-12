@@ -175,6 +175,10 @@ class ModelFetcher:
         with manifest_path.open(encoding="utf-8") as manifest_file:
           manifest = json.load(manifest_file)
         self._bundled_models[source] = self.model_parser.parse_models(manifest)
+        if self._bundled_models[source]:
+          # Persist the bundled snapshot with a sync timestamp. Without this,
+          # an offline fresh install would retry the network on every manager tick.
+          self.model_caches[source].set(manifest)
         cloudlog.info(f"Loaded bundled {source} model catalog: {len(self._bundled_models[source])} bundles")
       except Exception:
         cloudlog.exception(f"Failed to load bundled model catalog for {source}")
