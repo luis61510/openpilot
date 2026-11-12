@@ -7,6 +7,8 @@ See the LICENSE.md file in the root directory for more details.
 
 import time
 import os
+import json
+from pathlib import Path
 import requests
 from requests.exceptions import (SSLError, RequestException, HTTPError)
 from openpilot.common.params import Params
@@ -154,6 +156,7 @@ class ModelFetcher:
       for source, (_, suffix) in self.MODEL_SOURCES.items()
     }
     self._refetched: set[str] = set()
+    self._bundled_models: dict[str, list[custom.ModelManagerSP.ModelBundle]] = {}
     self.params.put("ModelManager_ActiveJson", {
       "qcom": self.MODEL_URL,
       "chestnut": self.MODEL_URL_CHESTNUT,
@@ -162,6 +165,21 @@ class ModelFetcher:
   @staticmethod
   def active_source(chestnut_present: bool) -> str:
     return "chestnut" if chestnut_present else "qcom"
+
+  def _get_bundled_models(self, source: str) -> list[custom.ModelManagerSP.ModelBundle]:
+    """Load the versioned model catalog shipped with openpilot as an offline fallback."""
+    if source not in self._bundled_models:
+      filename = "driving_models_chestnut_v28.json" if source == "chestnut" else "driving_models_v25.json"
+      manifest_path = Path(__file__).parent / "data" / filename
+      try:
+        with manifest_path.open(encoding="utf-8") as manifest_file:
+          manifest = json.load(manifest_file)
+        self._bundled_models[source] = self.model_parser.parse_models(manifest)
+        cloudlog.info(f"Loaded bundled {source} model catalog: {len(self._bundled_models[source])} bundles")
+      except Exception:
+        cloudlog.exception(f"Failed to load bundled model catalog for {source}")
+        self._bundled_models[source] = []
+    return self._bundled_models[source]
 
   def _fetch_and_cache_models(self, source: str) -> list[custom.ModelManagerSP.ModelBundle] | None:
     """Fetches fresh model data from remote and updates cache.
@@ -239,18 +257,23 @@ class ModelFetcher:
       # that empty result hide a previously usable cache.
       cloudlog.warning(f"Fresh model manifest for {source} produced no compatible bundles; keeping cached catalog")
 
-    if not cached_data:
-      cloudlog.warning("Failed to fetch fresh data and no cache available")
-      return []
+    if cached_data:
+      cloudlog.warning(f"Failed to fetch fresh data for {source}. Trying cached models")
+      try:
+        cached_bundles = self.model_parser.parse_models(cached_data)
+        if cached_bundles:
+          return cached_bundles
+        cloudlog.warning(f"Cached models for {source} also have no compatible bundles")
+      except Exception:
+        cloudlog.exception(f"Failed to parse cached models for {source}")
 
-    cloudlog.warning("Failed to fetch fresh data. Using cached models as fallback")
-    try:
-      cached_bundles = self.model_parser.parse_models(cached_data)
-      if cached_bundles:
-        return cached_bundles
-      cloudlog.warning(f"Cached models for {source} also have no compatible bundles")
-    except Exception:
-      cloudlog.exception(f"Failed to parse cached models for {source}")
+    # A fresh install has neither a Params cache nor network access. Ship the
+    # current official catalog with the app so the selector can still open.
+    bundled_bundles = self._get_bundled_models(source)
+    if bundled_bundles:
+      cloudlog.warning(f"Using bundled offline model catalog for {source}")
+      return bundled_bundles
+    cloudlog.error(f"No remote, cached, or bundled models available for {source}")
     return []
 
 
