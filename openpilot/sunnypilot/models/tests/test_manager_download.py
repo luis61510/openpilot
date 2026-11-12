@@ -535,6 +535,23 @@ class TestModelFetcherSources(OpenpilotTestCase):
     assert ModelFetcher.active_source(False) == "qcom"
     assert ModelFetcher.active_source(True) == "chestnut"
 
+  def test_empty_fresh_manifest_preserves_valid_cached_catalog(self):
+    cached = {"bundles": [manifest_bundle("small", "cached-small")]}
+    params = self._make_params(cached, {"bundles": [manifest_bundle("big", "cached-big", is_big=True)]})
+    fetcher = ModelFetcher(params)
+    with mock.patch.object(fetcher, "_fetch_and_cache_models", return_value=[]):
+      bundles = fetcher.get_bundles_for_source("qcom")
+    assert [bundle.ref for bundle in bundles] == ["cached-small"]
+
+  def test_invalid_cached_catalog_falls_back_to_bundled_catalog(self):
+    params = self._make_params({"bundles": []}, {"bundles": []})
+    fetcher = ModelFetcher(params)
+    with tempfile.TemporaryDirectory() as model_root, \
+         mock.patch("openpilot.sunnypilot.models.fetcher.Paths.model_root", return_value=model_root), \
+         mock.patch.object(fetcher, "_fetch_and_cache_models", return_value=None):
+      bundles = fetcher.get_bundles_for_source("qcom")
+    assert len(bundles) == 78
+
   def test_get_bundles_for_source_returns_each_source(self):
     params = self._make_params({"bundles": [manifest_bundle("small", "aaa")]},
                                {"bundles": [manifest_bundle("big", "bbb", is_big=True)]})
