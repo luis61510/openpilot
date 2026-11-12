@@ -24,7 +24,7 @@ from openpilot.common.test import OpenpilotTestCase
 from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
 from openpilot.selfdrive.test.helpers import http_server_context
 from openpilot.sunnypilot.models import manager as manager_module
-from openpilot.sunnypilot.models.fetcher import ModelFetcher, get_cached_bundles
+from openpilot.sunnypilot.models.fetcher import ModelFetcher, get_bundled_bundles, get_cached_bundles
 from openpilot.sunnypilot.models import helpers
 from openpilot.sunnypilot.models.helpers import (get_active_bundle, get_active_source, get_selected_bundle,
                                                   resolve_bundle_by_ref, validate_active_bundles)
@@ -514,6 +514,12 @@ class TestModelFetcherSources(OpenpilotTestCase):
     assert len(qcom) == 78, f"expected 78 bundled QCOM models, got {len(qcom)}"
     assert len(chestnut) == 22, f"expected 22 bundled Chestnut models, got {len(chestnut)}"
     assert all(bundle.minimumSelectorVersion == helpers.REQUIRED_JSON_VERSION for bundle in qcom + chestnut)
+
+    # The UI can be opened before the offroad manager publishes its first message.
+    ui_qcom = get_bundled_bundles(params, "qcom")
+    ui_chestnut = get_bundled_bundles(params, "chestnut")
+    assert len(ui_qcom) == 78
+    assert len(ui_chestnut) == 22
 
 
   def test_active_source_follows_chestnut_presence(self):
