@@ -10,7 +10,7 @@ import time
 
 from openpilot.common.hardware.hw import Paths
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
-from openpilot.sunnypilot.models.fetcher import get_cached_bundles
+from openpilot.sunnypilot.models.fetcher import get_bundled_bundles, get_cached_bundles
 from openpilot.sunnypilot.models.helpers import get_active_source, get_selected_bundle, resolve_bundle_by_ref
 from openpilot.sunnypilot.models.model_name import DEFAULT_BIG_MODEL, DEFAULT_MODEL
 
@@ -41,7 +41,12 @@ def bundles_for_source(source: str):
     available = ui_state.sm["modelManagerSP"].availableBundles
     if available:
       return available
-  return get_cached_bundles(ui_state.params, source)
+  cached = get_cached_bundles(ui_state.params, source)
+  if cached:
+    return cached
+  # The manager is offroad-only and may not have completed its first fetch yet.
+  # Load the packaged catalog directly so an early UI tap after reinstall works.
+  return get_bundled_bundles(ui_state.params, source)
 
 
 def default_model(source: str) -> str:
