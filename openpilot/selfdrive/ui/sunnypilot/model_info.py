@@ -33,8 +33,12 @@ def active_source() -> str:
 
 
 def bundles_for_source(source: str):
+  # Prefer live ModelManagerSP data, but keep a valid cached catalog visible
+  # while the manager is starting or has not published its first update.
   if source == active_source():
-    return ui_state.sm["modelManagerSP"].availableBundles
+    live_bundles = ui_state.sm["modelManagerSP"].availableBundles
+    if live_bundles:
+      return live_bundles
   return get_cached_bundles(ui_state.params, source)
 
 
