@@ -76,3 +76,11 @@ def test_model_data_v2_sp_navassist_diagnostics_fields_are_loaded():
   }
   actual = set(custom.ModelDataV2SP.schema.fields)
   assert expected <= actual, f"ModelDataV2SP missing fields: {sorted(expected - actual)}"
+
+
+if __name__ == "__main__":
+  test_navassist_cereal_event_and_service_registry()
+  test_navassist_custom_struct_fields_are_loaded_by_pycapnp()
+  test_navassist_messages_round_trip_through_cereal_runtime()
+  test_model_data_v2_sp_navassist_diagnostics_fields_are_loaded()
+  print("C4 Cereal runtime schema checks: PASS")
