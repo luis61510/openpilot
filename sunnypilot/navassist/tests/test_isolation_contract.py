@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from openpilot.cereal import log
 from openpilot.sunnypilot.navassist.lane_topologyd import IMAGE_CLASSIFIER_DIVISOR, services_healthy
 from openpilot.sunnypilot.navassist.navassistd import LOCALIZATION_MAX_AGE_NS, local_localization_valid
-from openpilot.sunnypilot.hardware.profile import HardwareProfile
 from openpilot.system.manager import process_config
 
 
@@ -20,20 +19,19 @@ def test_network_ingress_never_imports_or_publishes_vehicle_control_interfaces()
   assert 'PubMaster(["navAssistStateSP"])' in (NAVASSIST / "navassistd.py").read_text()
 
 
-def test_navigation_recorder_is_read_only():
-  source = (NAVASSIST / 'diagnosticsd.py').read_text()
-  assert 'messaging.SubMaster' in source
-  for forbidden in ('PubMaster(', 'sendcan', 'CarController', 'Params().put'):
-    assert forbidden not in source
+def test_navigation_recorder_is_not_claimed_or_started_on_c4():
+  process_config = (ROOT / "system/manager/process_config.py").read_text()
+  assert not (NAVASSIST / "diagnosticsd.py").exists()
+  assert "nav_diagnosticsd" not in process_config
 
 
 def test_receiver_is_always_available_and_lane_observer_stays_onroad():
   process_config = (ROOT / "system/manager/process_config.py").read_text()
-  assert 'PythonProcess("navassistd", "openpilot.sunnypilot.navassist.navassistd", navassist_receiver_ready)' in process_config
-  assert 'PythonProcess("lane_topologyd", "openpilot.sunnypilot.navassist.lane_topologyd", navassist_lane_observer_ready)' in process_config
-  assert 'PythonProcess("nav_lane_intentd", "openpilot.sunnypilot.navassist.nav_lane_intentd", navassist_lane_observer_ready)' in process_config
+  assert 'PythonProcess("navassistd", "sunnypilot.navassist.navassistd", navassist_receiver_ready)' in process_config
+  assert 'PythonProcess("lane_topologyd", "sunnypilot.navassist.lane_topologyd", navassist_lane_observer_ready)' in process_config
+  assert 'PythonProcess("nav_lane_intentd", "sunnypilot.navassist.nav_lane_intentd", navassist_lane_observer_ready)' in process_config
   receiver = process_config.split("def navassist_receiver_ready", 1)[1].split("def ", 1)[0]
-  assert "HardwareProfile.C3XL" in receiver
+  assert "is_c4_device()" in receiver
   assert 'brand == "tesla"' not in receiver
   assert "NavAssistToken" not in receiver
   assert "NavAssistTrackMode" not in receiver
@@ -41,7 +39,7 @@ def test_receiver_is_always_available_and_lane_observer_stays_onroad():
   lane_observer = process_config.split("def navassist_lane_observer_ready", 1)[1].split("def ", 1)[0]
   assert "started" in lane_observer
   assert 'CP.brand == "tesla"' in lane_observer
-  assert "navassist_receiver_ready" in lane_observer
+  assert "is_c4_device()" in lane_observer
 
   lane_daemon = (NAVASSIST / "lane_topologyd.py").read_text()
   assert "client.timestamp_eof" in lane_daemon
@@ -150,7 +148,7 @@ def test_local_localization_requires_alive_valid_and_bounded_age():
 
 
 def test_lane_control_inputs_require_seen_alive_and_valid():
-  services = ("modelV2", "extrinsicsCalibration", "deviceState", "narrowRoadCameraState")
+  services = ("modelV2", "liveCalibration", "deviceState", "roadCameraState")
   sm = SimpleNamespace(
     seen=dict.fromkeys(services, True),
     alive=dict.fromkeys(services, True),
@@ -176,10 +174,12 @@ class FakeParams:
   pass
 
 
-def test_manager_receiver_requires_only_c3xl_while_control_observers_require_tesla(monkeypatch):
+def test_manager_receiver_requires_c4_and_control_observers_require_tesla(monkeypatch):
   tesla = SimpleNamespace(brand="tesla")
-  monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.C3XL)
   configured = FakeParams()
+  monkeypatch.setattr(process_config, "PC", False)
+  monkeypatch.setattr(process_config, "TICI", True)
+  monkeypatch.setattr(process_config, "HARDWARE", SimpleNamespace(get_device_type=lambda: "mici"))
   assert process_config.navassist_receiver_ready(False, configured, tesla)
   assert process_config.navassist_receiver_ready(True, configured, tesla)
   assert process_config.navassist_lane_observer_ready(True, configured, tesla)
@@ -187,5 +187,8 @@ def test_manager_receiver_requires_only_c3xl_while_control_observers_require_tes
   honda = SimpleNamespace(brand="honda")
   assert process_config.navassist_receiver_ready(False, configured, honda)
   assert not process_config.navassist_lane_observer_ready(True, configured, honda)
-  monkeypatch.setattr(process_config, "get_hardware_profile", lambda: HardwareProfile.STANDARD)
+  monkeypatch.setattr(process_config, "HARDWARE", SimpleNamespace(get_device_type=lambda: "tici"))
+  assert not process_config.navassist_receiver_ready(True, configured, tesla)
+  monkeypatch.setattr(process_config, "TICI", False)
+  monkeypatch.setattr(process_config, "HARDWARE", SimpleNamespace(get_device_type=lambda: "mici"))
   assert not process_config.navassist_receiver_ready(True, configured, tesla)
