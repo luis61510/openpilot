@@ -5,9 +5,8 @@ import time
 
 import numpy as np
 
-from msgq.visionipc import VisionIpcClient
+from msgq.visionipc import VisionIpcClient, VisionStreamType
 from openpilot.cereal import log, messaging
-from openpilot.cereal.visionipc import VisionStreamType
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
@@ -15,7 +14,7 @@ from openpilot.sunnypilot.lane_topology.ui_bridge import LaneTopologyObserver, v
 from openpilot.sunnypilot.navassist.lane_publisher import build_lane_topology_message, MODEL_IMAGE_MAX_SKEW_NS
 
 
-CALIBRATED = log.ExtrinsicsCalibration.Status.calibrated
+CALIBRATED = log.LiveCalibrationData.Status.calibrated
 IMAGE_CLASSIFIER_DIVISOR = 2
 
 
@@ -27,9 +26,9 @@ def _connect_camera() -> tuple[VisionIpcClient, VisionStreamType]:
   while True:
     streams = VisionIpcClient.available_streams("camerad", block=False)
     if streams:
-      stream = (VisionStreamType.VISION_STREAM_NARROW_ROAD
-                if VisionStreamType.VISION_STREAM_NARROW_ROAD in streams
-                else VisionStreamType.VISION_STREAM_WIDE_ROAD)
+      stream = (VisionStreamType.VISION_STREAM_ROAD
+                if VisionStreamType.VISION_STREAM_ROAD in streams
+                else VisionStreamType.VISION_STREAM_ROAD)
       client = VisionIpcClient("camerad", stream, conflate=True)
       while not client.connect(False):
         time.sleep(0.1)
@@ -39,15 +38,15 @@ def _connect_camera() -> tuple[VisionIpcClient, VisionStreamType]:
 
 def main() -> None:
   client, stream = _connect_camera()
-  is_wide = stream == VisionStreamType.VISION_STREAM_WIDE_ROAD
-  camera_state_service = "wideRoadCameraState" if is_wide else "narrowRoadCameraState"
+  is_wide = stream == VisionStreamType.VISION_STREAM_ROAD
+  camera_state_service = "roadCameraState"
   # Geometry follows modelV2 at 20 Hz; metric image evidence remains bounded to
   # about 10 Hz. This keeps the 150 ms model-age gate satisfiable without running
   # the image classifier on every frame.
   bridge = LaneTopologyObserver(frame_divisor=1)
   pm = messaging.PubMaster(["laneTopologyStateSP"])
   sm = messaging.SubMaster(
-    ["modelV2", "extrinsicsCalibration", "deviceState", camera_state_service],
+    ["modelV2", "liveCalibration", "deviceState", camera_state_service],
     poll="modelV2",
   )
 
@@ -65,29 +64,27 @@ def main() -> None:
     # an explicitly stale typed observation instead of leaving a latched value.
     sm.update(50)
     calibration_inputs_updated = any(sm.updated[service] for service in (
-      "extrinsicsCalibration", "deviceState", camera_state_service,
+      "liveCalibration", "deviceState", camera_state_service,
     ))
     if calibration_inputs_updated and all(sm.seen[service] for service in (
-      "extrinsicsCalibration", "deviceState", camera_state_service,
+      "liveCalibration", "deviceState", camera_state_service,
     )):
-      calibration = sm["extrinsicsCalibration"]
+      calibration = sm["liveCalibration"]
       calibration_geometry_valid = bool(len(calibration.rpyCalib) == 3 and calibration.calStatus == CALIBRATED)
       try:
         if not calibration_geometry_valid:
           raise ValueError("calibration is not valid")
         device_camera = DEVICE_CAMERAS[(str(sm["deviceState"].deviceType), str(sm[camera_state_service].sensor))]
-        intrinsics = device_camera.wide_road.intrinsics if is_wide else device_camera.narrow_road.intrinsics
+        intrinsics = device_camera.fcam.intrinsics
         device_from_calib = rot_from_euler(calibration.rpyCalib)
         view_from_calib = view_frame_from_device_frame @ device_from_calib
-        if is_wide and len(calibration.wideFromDeviceEuler) == 3:
-          view_from_calib = view_frame_from_device_frame @ rot_from_euler(calibration.wideFromDeviceEuler) @ device_from_calib
         camera_from_calib = intrinsics @ view_from_calib
       except (KeyError, TypeError, ValueError):
         calibration_geometry_valid = False
         camera_from_calib = None
 
     calibration_inputs_healthy = services_healthy(
-      sm, ("extrinsicsCalibration", "deviceState", camera_state_service),
+      sm, ("liveCalibration", "deviceState", camera_state_service),
     )
     calibration_valid = calibration_geometry_valid and calibration_inputs_healthy
     model_healthy = services_healthy(sm, ("modelV2",))
