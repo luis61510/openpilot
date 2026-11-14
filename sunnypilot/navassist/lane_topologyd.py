@@ -6,7 +6,8 @@ import time
 import numpy as np
 
 from msgq.visionipc import VisionIpcClient, VisionStreamType
-from openpilot.cereal import log, messaging
+from cereal import log
+import cereal.messaging as messaging
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
