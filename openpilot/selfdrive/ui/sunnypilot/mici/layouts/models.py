@@ -124,7 +124,8 @@ class ModelsLayoutMici(NavScroller):
 
     hardware_btns = []
     active = active_source()
-    for source, label in (("qcom", tr("small models")), ("chestnut", tr("big models"))):
+    # This Comma Four branch exposes the single official release-mici catalog.
+    for source, label in (("chestnut", tr("C4 models")),):
       bundle = get_selected_bundle(ui_state.params, source)
       value = (bundle.internalName if bundle else default_model_name(source)).lower()
       if source == active:
