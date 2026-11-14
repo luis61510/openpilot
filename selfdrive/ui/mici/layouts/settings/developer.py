@@ -29,6 +29,21 @@ class AlphaLongConfirmPage(NavScroller):
     ])
 
 
+class NavAssistResetPage(NavScroller):
+  def __init__(self, on_confirm: Callable[[], None]):
+    super().__init__()
+    accept = BigConfirmationCircleButton(
+      "reset NavAssist\npairing",
+      gui_app.texture("icons_mici/setup/warning.png", 64, 64),
+      lambda: self.dismiss(on_confirm),
+    )
+    self._scroller.add_widgets([
+      GreyBigButton("", "Reset the trusted phone app identities for NavAssist."),
+      GreyBigButton("", "A compatible phone app can pair again through local network discovery."),
+      accept,
+    ])
+
+
 class DeveloperLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
@@ -86,6 +101,15 @@ class DeveloperLayoutMici(NavScroller):
                                               toggle_callback=lambda checked: (gui_app.set_show_touches(checked),
                                                                                gui_app.set_show_fps(checked)))
 
+    self._navassist_pairing_btn = BigButton(
+      "NavAssist phone",
+      "paired" if ui_state.params.get("NavAssistPairedApp") else "not paired",
+      icon=gui_app.texture("icons_mici/settings/developer/ssh.png", 56, 64),
+    )
+    self._navassist_pairing_btn.set_click_callback(
+      lambda: gui_app.push_widget(NavAssistResetPage(self._request_navassist_pairing_reset))
+    )
+
     self._scroller.add_widgets([
       self._adb_toggle,
       self._ssh_toggle,
@@ -95,6 +119,7 @@ class DeveloperLayoutMici(NavScroller):
       self._lat_maneuver_toggle,
       self._alpha_long_toggle,
       self._debug_mode_toggle,
+      self._navassist_pairing_btn,
     ])
 
     # Toggle lists
@@ -133,6 +158,18 @@ class DeveloperLayoutMici(NavScroller):
   def _update_state(self):
     super()._update_state()
     self._ssh_fetcher.update()
+    self._update_navassist_status()
+
+  def _update_navassist_status(self):
+    paired = bool(ui_state.params.get("NavAssistPairedApp"))
+    self._navassist_pairing_btn.set_value("paired" if paired else "not paired")
+
+  def _request_navassist_pairing_reset(self):
+    if ui_state.engaged:
+      gui_app.push_widget(BigDialog("", "Disengage before resetting NavAssist pairing."))
+      return
+    ui_state.params.put_bool("NavAssistPairingReset", True, block=True)
+    self._navassist_pairing_btn.set_value("reset requested")
 
   def show_event(self):
     super().show_event()
@@ -140,6 +177,7 @@ class DeveloperLayoutMici(NavScroller):
 
   def _update_toggles(self):
     ui_state.update_params()
+    self._update_navassist_status()
 
     # CP gating
     if ui_state.CP is not None:
