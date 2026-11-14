@@ -123,9 +123,10 @@ class ModelsLayoutMici(NavScroller):
     self.focused_widget = self.select_model_btn
 
     hardware_btns = []
+    # Use the slot selected by current hardware state; the C4 catalog is
+    # available in both slots so this view always matches the active runtime.
     active = active_source()
-    # This Comma Four branch exposes the single official release-mici catalog.
-    for source, label in (("chestnut", tr("C4 models")),):
+    for source, label in ((active, tr("C4 models")),):
       bundle = get_selected_bundle(ui_state.params, source)
       value = (bundle.internalName if bundle else default_model_name(source)).lower()
       if source == active:
