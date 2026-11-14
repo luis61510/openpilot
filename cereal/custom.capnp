@@ -453,6 +453,11 @@ struct ModelDataV2SP @0xa1680744031fdb2d {
 
   leftLaneChangeEdgeBlock @1 :Bool;
   rightLaneChangeEdgeBlock @2 :Bool;
+  turnEntryModelMonoTime @3 :UInt64;
+  turnEntryInputReason @4 :Text;
+  turnEntryLeftReason @5 :Text;
+  turnEntryRightReason @6 :Text;
+  turnDecisionReason @7 :Text;
 
   enum TurnDirection {
     none @0;
