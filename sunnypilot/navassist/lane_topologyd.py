@@ -25,10 +25,8 @@ def services_healthy(sm, services: tuple[str, ...]) -> bool:
 def _connect_camera() -> tuple[VisionIpcClient, VisionStreamType]:
   while True:
     streams = VisionIpcClient.available_streams("camerad", block=False)
-    if streams:
-      stream = (VisionStreamType.VISION_STREAM_ROAD
-                if VisionStreamType.VISION_STREAM_ROAD in streams
-                else VisionStreamType.VISION_STREAM_ROAD)
+    if VisionStreamType.VISION_STREAM_ROAD in streams:
+      stream = VisionStreamType.VISION_STREAM_ROAD
       client = VisionIpcClient("camerad", stream, conflate=True)
       while not client.connect(False):
         time.sleep(0.1)
@@ -38,7 +36,6 @@ def _connect_camera() -> tuple[VisionIpcClient, VisionStreamType]:
 
 def main() -> None:
   client, stream = _connect_camera()
-  is_wide = stream == VisionStreamType.VISION_STREAM_ROAD
   camera_state_service = "roadCameraState"
   # Geometry follows modelV2 at 20 Hz; metric image evidence remains bounded to
   # about 10 Hz. This keeps the 150 ms model-age gate satisfiable without running
