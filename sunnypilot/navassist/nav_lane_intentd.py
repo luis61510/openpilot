@@ -391,7 +391,7 @@ def apply_radar_target_gate(intent: NavLaneIntent, radar, model, *, speed_mps: f
 
 
 def main() -> None:
-  from openpilot.cereal import messaging
+  import cereal.messaging as messaging
   from openpilot.common.realtime import Ratekeeper
 
   settings_cache = SettingsCache()
