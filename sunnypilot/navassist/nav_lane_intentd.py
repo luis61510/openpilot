@@ -4,7 +4,6 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import replace
-from opendbc.sunnypilot.car.tesla.values import TeslaFlagsSP
 
 from openpilot.sunnypilot.navassist.lane_intent import (
   LaneIntentDirection,
@@ -29,7 +28,7 @@ BASE_SERVICES = ("navAssistStateSP", "carState", "carControl", "controlsState")
 MODEL_SERVICES = ("modelV2",)
 VISUAL_LANE_SERVICES = ("laneTopologyStateSP",)
 LANE_SERVICES = VISUAL_LANE_SERVICES + MODEL_SERVICES
-SERVICES = BASE_SERVICES + LANE_SERVICES + ("radarTracks", "carParamsSP")
+SERVICES = BASE_SERVICES + LANE_SERVICES
 TURN_LANE_LOOKAHEAD_M = 1_000.0
 EXIT_LANE_LOOKAHEAD_M = 2_000.0
 # jihui Amap 141ebea0 MainActivitySettings.kt: fork_dist_h defaults to 80 m.
@@ -96,16 +95,9 @@ def selected_services_healthy(sm, services: tuple[str, ...]) -> bool:
   return all(sm.seen[service] and sm.alive[service] and sm.valid[service] for service in services)
 
 
-def efficiency_radar_healthy(sm, now_ns: int) -> bool:
-  radar = sm["radarTracks"]
-  fresh = all(0 < sm.logMonoTime[s] <= now_ns and now_ns - sm.logMonoTime[s] <= 200_000_000
-              for s in ("radarTracks", "modelV2"))
-  return bool(selected_services_healthy(sm, ("radarTracks", "modelV2")) and fresh
-              and abs(sm.logMonoTime["radarTracks"] - sm.logMonoTime["modelV2"]) <= 100_000_000
-              and not any((radar.errors.canError, radar.errors.radarFault,
-                           radar.errors.radarUnavailableTemporary, radar.errors.wrongConfig))
-              and sm.seen["carParamsSP"] and sm.valid["carParamsSP"]
-              and sm["carParamsSP"].flags & TeslaFlagsSP.ARS408_RADAR)
+def efficiency_radar_healthy(_sm, _now_ns: int) -> bool:
+  # C4 release-mici does not expose the Sniper Tesla ARS408 radarTracks contract.
+  return False
 
 
 def navigation_linked(nav, *, base_healthy: bool) -> bool:
@@ -403,7 +395,6 @@ def main() -> None:
 
   settings_cache = SettingsCache()
   coordinator = NavLaneIntentCoordinator(max_changes=settings_cache.read().max_lane_changes)
-  efficiency = EfficiencyLaneSelector()
   turn_signal_coordinator = NavTurnSignalCoordinator()
   final_fork_scope = FinalForkScope()
   oem_lane_feedback = OemLaneFeedback()
@@ -491,21 +482,9 @@ def main() -> None:
       turn_geometry_active=sp_turn_geometry_active(sm["controlsState"], float(car_state.vEgo)),
       lookahead_time_s=settings.signal_lead_time_s,
     )
-    # Reuse ARS408's multi-target output. The selector may use an empty adjacent
-    # forward corridor only with a measured ego lead and separate blindspot gate.
-    # Radar/model timestamps must be fresh and close enough to align.
-    radar = sm["radarTracks"]
-    radar_healthy = efficiency_radar_healthy(sm, now_ns)
-    route_reserved = (turn_intent.signal_requested or navigation_change_pending(plan, topology_input)
-                      or navigation_lane_guidance_active(plan, nav))
-    plan, efficiency_selected = efficiency.select(
-      plan, nav, topology_input, vehicle, radar, sm["modelV2"], oem,
-      healthy=bool(base_healthy and model_healthy and radar_healthy),
-      execution_healthy=bool(base_healthy and model_healthy),
-      enabled=settings.enabled and settings.lane_change_enabled and settings.efficiency_lane_change_enabled,
-      cruise_mps=float(car_state.vCruise) / 3.6,
-      route_reserved=route_reserved, now_ns=now_ns, settings=settings,
-    )
+    # C4 has no validated equivalent for Sniper's ARS408 multi-target radar feed.
+    # Disable radar-based efficiency overtaking; navigation lane alignment remains active.
+    efficiency_selected = False
     # Reuse the existing pre-turn window. An SP change already in progress
     # finishes before handoff; a further approach-lane change must not suppress
     # the model's turn desire at the intersection.
@@ -514,14 +493,6 @@ def main() -> None:
       plan, topology_input, vehicle, now_ns=now_ns,
       allow_new_lane_change=(efficiency_selected or lane_alignment_may_start(nav, turn_intent, speed_mps=vehicle.speed_mps)),
       spoken_announcement_id=str(nav.laneChangeSpeechCompletedId) if base_healthy and nav.valid and not nav.stale else "",
-    )
-    if efficiency_selected:
-      efficiency.observe(lane_intent, now_ns)
-      lane_intent = replace(lane_intent, reason="efficiency:" + lane_intent.reason)
-    lane_intent = apply_oem_signal_gate(lane_intent, gate_reason, coordinator._phase)
-    lane_intent = apply_radar_target_gate(
-      lane_intent, radar, sm["modelV2"], speed_mps=vehicle.speed_mps,
-      healthy=bool(model_healthy and radar_healthy),
     )
     if lane_intent.signal_requested or coordinator.fork_terminal or plan.force_fork:
       intent = lane_intent
@@ -532,7 +503,7 @@ def main() -> None:
     else:
       intent = turn_intent if settings.turn_signal_enabled else NavLaneIntent(reason="turnSignalsDisabled")
       if settings.efficiency_lane_change_enabled and not intent.signal_requested:
-        intent = replace(intent, reason=efficiency.reason)
+        intent = replace(intent, reason="efficiencyUnavailable:C4RadarFeed")
     if not settings.enabled:
       intent = NavLaneIntent(reason="navigationDisabled")
 
