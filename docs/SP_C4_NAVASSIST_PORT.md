@@ -67,6 +67,7 @@ The official release-mici codebase remains the base.
       top-level `SConstruct`; the normal source-tree SCons build cannot be
       invoked from this release branch as if it were a development checkout.
       The C4 runtime path loads `cereal/*.capnp` through Python pycapnp.
+- [x] Corrected the NavAssist daemon imports to use the release-mici Python Cereal package (`cereal`); `openpilot/cereal` in this branch contains native/generated artifacts, not the Python schema API. Added a runtime import regression test for all three NavAssist daemons.
 - [x] Added `cereal/messaging/tests/test_c4_runtime_schema.py` to check the
       C4 `pycapnp==2.1.0` dependency, the physical `mici` identity when on
       comma hardware, the three Event union fields, service registrations,
