@@ -5,7 +5,8 @@ import math
 import threading
 import time
 
-from openpilot.cereal import log, messaging
+from cereal import log
+import cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
 from openpilot.common.swaglog import cloudlog
