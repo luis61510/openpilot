@@ -149,8 +149,10 @@ class ModelFetcher:
 
   # This C4 port uses the single release-mici catalog in the Chestnut slot.
   # There is intentionally no separate QCOM or Chestnut big-model manifest.
+  # C4 may expose either runtime slot depending on Chestnut detection.
+  # Keep the official catalog available in both slots.
   MODEL_SOURCES = {
-    "qcom": (None, ""),
+    "qcom": (MODEL_URL, ""),
     "chestnut": (MODEL_URL, "_Chestnut"),
   }
 
@@ -209,10 +211,8 @@ class ModelFetcher:
 
   @staticmethod
   def _cache_matches_source(source: str, cached_data: dict) -> bool:
-    bundles = cached_data.get("bundles", [])
-    if source == "chestnut":
-      return bool(bundles) and not any(bundle.get("is_big") is True for bundle in bundles)
-    return False
+    # Both C4 runtime slots consume the same official release-mici catalog.
+    return source in ModelFetcher.MODEL_SOURCES and bool(cached_data.get("bundles", []))
 
   def get_bundles_for_source(self, source: str) -> list[custom.ModelManagerSP.ModelBundle]:
     if source not in self.MODEL_SOURCES:
