@@ -100,9 +100,10 @@ The official release-mici codebase remains the base.
 - [x] Add equivalent Tesla NavAssist control integration to the stock model
       runner; non-Tesla vehicles retain the preserved legacy DesireHelper path.
       Runtime behavior still requires C4 validation.
-- [ ] Port the source branch's pairing/reset controls and navigation/lane HUD
-      into the release-mici C4 UI paths; the UI contract test still exposes
-      this remaining gap.
+- [x] Add NavAssist phone-pairing status and a confirmed pairing-reset
+      action to the C4 Mici developer settings.
+- [ ] Port the source branch's lane-topology/navigation HUD into the C4
+      onroad UI; this remains a visible UI gap.
 
 - [x] Branch created from the official SunnyPilot release-mici commit.
 - [x] Four-layer source modules copied selectively.
