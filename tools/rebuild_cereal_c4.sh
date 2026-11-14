@@ -50,7 +50,7 @@ for OUTPUT_DIR in "${OUTPUT_DIRS[@]}"; do
 done
 
 # Keep the installed/package service registry in sync with cereal/services.py.
-PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" python3 -m cereal.services > "$ROOT/cereal/services.h"
+python3 "$ROOT/cereal/services.py" > "$ROOT/cereal/services.h"
 cp "$ROOT/cereal/services.h" "$ROOT/openpilot/cereal/services.h"
 
 echo "Cereal C++ artifacts and service registries regenerated with $CAPNP_VERSION."
