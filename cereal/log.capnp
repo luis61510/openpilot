@@ -2559,9 +2559,9 @@ struct Event {
     liveMapDataSP @115 :Custom.LiveMapDataSP;
     modelDataV2SP @116 :Custom.ModelDataV2SP;
     customReserved10 @136 :Custom.CustomReserved10;
-    customReserved11 @137 :Custom.CustomReserved11;
-    customReserved12 @138 :Custom.CustomReserved12;
-    customReserved13 @139 :Custom.CustomReserved13;
+    navAssistStateSP @137 :Custom.NavAssistStateSP;
+    laneTopologyStateSP @138 :Custom.LaneTopologyStateSP;
+    navLaneIntentSP @139 :Custom.NavLaneIntentSP;
     customReserved14 @140 :Custom.CustomReserved14;
     customReserved15 @141 :Custom.CustomReserved15;
     customReserved16 @142 :Custom.CustomReserved16;
