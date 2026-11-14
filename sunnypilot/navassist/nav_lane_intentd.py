@@ -5,6 +5,8 @@ import math
 import time
 from dataclasses import replace
 
+import cereal.messaging as messaging
+
 from openpilot.sunnypilot.navassist.lane_intent import (
   LaneIntentDirection,
   LaneTopologyInput,
@@ -391,7 +393,6 @@ def apply_radar_target_gate(intent: NavLaneIntent, radar, model, *, speed_mps: f
 
 
 def main() -> None:
-  import cereal.messaging as messaging
   from openpilot.common.realtime import Ratekeeper
 
   settings_cache = SettingsCache()
