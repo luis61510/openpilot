@@ -157,6 +157,6 @@ class LaneTopologyObserver:
     return left.marking_type, right.marking_type
 
 
-# Compatibility name for the non-C3XL UI-only fallback. The onroad C3XL
+# Compatibility name retained for the UI-only fallback. The onroad C4
 # control producer imports the neutral observer name above.
 LaneTopologyUIBridge = LaneTopologyObserver
