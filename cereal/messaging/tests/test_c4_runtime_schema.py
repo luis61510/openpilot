@@ -6,6 +6,7 @@ the release-mici install branch does not include the top-level SCons build graph
 """
 
 import os
+from pathlib import Path
 from importlib.metadata import version
 
 from cereal import custom, log
@@ -49,7 +50,13 @@ def test_navassist_cereal_event_and_service_registry():
   event_fields = log.Event.schema.fields
   for service in NAVASSIST_SERVICES:
     assert service in event_fields, f"missing Event union field: {service}"
-    assert service in SERVICE_LIST, f"missing cereal service registration: {service}"
+    assert service in SERVICE_LIST, f"missing Python cereal service registration: {service}"
+
+  # The installed C4 package has a second generated C++ service registry.
+  packaged_services = Path(__file__).resolve().parents[3] / "openpilot/cereal/services.h"
+  packaged_header = packaged_services.read_text()
+  for service in NAVASSIST_SERVICES:
+    assert f'"{service}"' in packaged_header, f"missing packaged C++ service registration: {service}"
 
 
 def test_navassist_custom_struct_fields_are_loaded_by_pycapnp():
