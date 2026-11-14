@@ -131,8 +131,9 @@ def build_lane_plan(nav, topology, *, healthy: bool, settings: NavAssistSettings
   recommended = tuple(int(lane.index) for lane in lanes if lane.recommended and not getattr(lane, "routeAvoid", False))
   if not recommended and any(getattr(lane, "routeAvoid", False) for lane in lanes):
     # AMap may expose only route-avoided lanes (legacy F / modern 255) and no
-    # explicit foreground recommendation. Preserve the full observation and
-    # infer the complement only when C3 sees the same lane count.
+    # explicit foreground recommendation. Preserve the reported lane set and
+    # treat its non-avoided lanes as advisory candidates; visual topology still
+    # bounds the target lane before any control-facing request is published.
     recommended = tuple(int(lane.index) for lane in lanes if not getattr(lane, "routeAvoid", False))
   maneuver = str(nav.maneuver)
   distance_m = float(nav.maneuverDistanceM)
