@@ -4,7 +4,7 @@ import platform
 
 from cereal import car, custom
 from openpilot.common.params import Params
-from openpilot.system.hardware import PC, TICI
+from openpilot.system.hardware import HARDWARE, PC, TICI
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
 from openpilot.system.hardware.hw import Paths
 
@@ -67,6 +67,20 @@ def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def use_github_runner(started, params, CP: car.CarParams) -> bool:
   return not PC and params.get_bool("EnableGithubRunner") and (
     not params.get_bool("NetworkMetered") and not params.get_bool("GithubRunnerSufficientVoltage"))
+
+def is_c4_device() -> bool:
+  try:
+    return bool(not PC and TICI and HARDWARE.get_device_type().lower() == "mici")
+  except (OSError, AttributeError):
+    return False
+
+def navassist_receiver_ready(_started, _params, _CP) -> bool:
+  # Network ingress is available on C4 even while the vehicle is offroad.
+  return is_c4_device()
+
+def navassist_lane_observer_ready(started, _params, CP) -> bool:
+  # Control-facing observers are C4 + Tesla only; stale/invalid inputs fail closed.
+  return bool(started and is_c4_device() and CP.brand == "tesla")
 
 def use_copyparty(started, params, CP: car.CarParams) -> bool:
   return bool(params.get_bool("EnableCopyparty"))
@@ -179,6 +193,9 @@ procs += [
   # mapd
   NativeProcess("mapd", Paths.mapd_root(), ["bash", "-c", f"{MAPD_PATH} > /dev/null 2>&1"], mapd_ready),
   PythonProcess("mapd_manager", "sunnypilot.mapd.mapd_manager", always_run),
+  PythonProcess("navassistd", "sunnypilot.navassist.navassistd", navassist_receiver_ready),
+  PythonProcess("lane_topologyd", "sunnypilot.navassist.lane_topologyd", navassist_lane_observer_ready),
+  PythonProcess("nav_lane_intentd", "sunnypilot.navassist.nav_lane_intentd", navassist_lane_observer_ready),
 
   # locationd
   NativeProcess("locationd_llk", "sunnypilot/selfdrive/locationd", ["./locationd"], only_onroad),
