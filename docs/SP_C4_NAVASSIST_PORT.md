@@ -46,6 +46,15 @@ The official release-mici codebase remains the base.
 
 ### Source/static checks
 
+### Gaps identified in the C4 static audit
+
+- [ ] Port the source branch's pairing/reset controls and navigation/lane HUD
+      into the release-mici C4 UI paths; current target UI files are unchanged.
+- [ ] Decide and implement equivalent NavAssist control integration for the
+      stock model runner, or explicitly require a compatible tinygrad bundle.
+- [ ] Run the imported UI contract tests after the UI port; current test
+      expectations refer to source-branch paths and C3XL-era assumptions.
+
 - [x] Branch created from the official SunnyPilot release-mici commit.
 - [x] Four-layer source modules copied selectively.
 - [x] C4 camera service/stream/intrinsics adapted in lane_topologyd.
