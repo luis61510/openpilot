@@ -165,8 +165,8 @@ class DeveloperLayoutMici(NavScroller):
     self._navassist_pairing_btn.set_value("paired" if paired else "not paired")
 
   def _request_navassist_pairing_reset(self):
-    if ui_state.engaged:
-      gui_app.push_widget(BigDialog("", "Disengage before resetting NavAssist pairing."))
+    if not ui_state.is_offroad():
+      gui_app.push_widget(BigDialog("", "Stop and switch offroad before resetting NavAssist pairing."))
       return
     ui_state.params.put_bool("NavAssistPairingReset", True, block=True)
     self._navassist_pairing_btn.set_value("reset requested")
