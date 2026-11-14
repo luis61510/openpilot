@@ -15,22 +15,22 @@ NAVASSIST_SERVICES = (
   "navLaneIntentSP",
 )
 
-EXPECTED_CUSTOM_FIELDS = {
-  custom.NavAssistStateSP: {
+EXPECTED_CUSTOM_FIELDS = (
+  ("NavAssistStateSP", custom.NavAssistStateSP, {
     "publishMonoTime", "receiveMonoTime", "sequence", "routeRevision",
     "sessionId", "valid", "stale", "maneuver", "lanes",
-  },
-  custom.LaneTopologyStateSP: {
+  }),
+  ("LaneTopologyStateSP", custom.LaneTopologyStateSP, {
     "publishMonoTime", "modelMonoTime", "imageMonoTime", "valid", "stale",
     "calibrationValid", "topologyState", "validForControl",
     "leftMarking", "rightMarking", "leftEvidenceValid", "rightEvidenceValid",
-  },
-  custom.NavLaneIntentSP: {
+  }),
+  ("NavLaneIntentSP", custom.NavLaneIntentSP, {
     "publishMonoTime", "valid", "signalRequested", "laneChangeAuthorized",
     "direction", "requestId", "targetLaneIndex", "forkNow",
     "allowUnknownCrossing", "ignoreSolidBoundary",
-  },
-}
+  }),
+)
 
 
 def test_navassist_cereal_event_and_service_registry():
@@ -41,10 +41,10 @@ def test_navassist_cereal_event_and_service_registry():
 
 
 def test_navassist_custom_struct_fields_are_loaded_by_pycapnp():
-  for schema, expected_fields in EXPECTED_CUSTOM_FIELDS.items():
+  for name, schema, expected_fields in EXPECTED_CUSTOM_FIELDS:
     actual_fields = set(schema.schema.fields)
     assert expected_fields <= actual_fields, (
-      f"{schema.__name__} missing fields: {sorted(expected_fields - actual_fields)}"
+      f"{name} missing fields: {sorted(expected_fields - actual_fields)}"
     )
 
 
