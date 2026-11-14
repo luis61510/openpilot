@@ -46,30 +46,44 @@ The official release-mici codebase remains the base.
 
 ### Source/static checks
 
-### Cereal / Cap'n Proto static audit (2026-11-14)
+### Cereal / Cap'n Proto: C4 runtime audit (2026-11-14)
 
-- [x] The three new message structs use the original SunnyPilot reserved struct IDs:
+- [x] The three new message structs reuse the original SunnyPilot reserved struct IDs:
       `CustomReserved11` → `NavAssistStateSP`,
       `CustomReserved12` → `LaneTopologyStateSP`,
       `CustomReserved13` → `NavLaneIntentSP`.
-- [x] The Event fields reuse the corresponding reserved ordinals 137–139;
-      existing Event field ordinals and types were not rewritten.
-- [x] No duplicate struct IDs were found in `custom.capnp`; no duplicate
-      Event field ordinals were found in the added schema range.
-- [x] `services.py` and the checked-in `services.h` have 83 entries each;
-      the names and service settings match exactly in the static comparison.
-- [ ] **Blocking: generated C++ Cap'n Proto artifacts are stale.** The checked-in
-      `cereal/gen/cpp/custom.capnp.h/.c++` and
-      `cereal/gen/cpp/log.capnp.h/.c++` do not contain
-      `NavAssistStateSP`, `LaneTopologyStateSP`, `NavLaneIntentSP`, or the
-      Event fields at ordinals 137–139. C++ consumers cannot be considered
-      buildable until these artifacts are regenerated from the current schemas.
-- [ ] Actual `capnp compile` / C++ build was not run in this environment:
-      no Cap'n Proto compiler is installed and this repository has no GitHub
-      Actions workflow available to execute the build. The checked-in generated
-      headers declare Cap'n Proto version `1000001` (1.0.1); regeneration must
-      use the matching compiler/runtime version, then compile the Cereal C++
-      targets and run messaging tests.
+- [x] Event fields reuse reserved ordinals 137–139; existing Event ordinals
+      and types were not rewritten.
+- [x] No duplicate struct IDs or Event field ordinals were found in the added
+      schema range.
+- [x] `services.py` and checked-in `services.h` have matching service names
+      and settings (83 entries each).
+- [x] Confirmed the actual `release-mici` Python runtime dependency contract:
+      `pycapnp==2.1.0`; the C++ compiler package is the vendored
+      `capnproto==1.0.1` from `commaai/dependencies:release-capnproto`.
+      The `CAPNP_VERSION == 1000001` marker in generated C++ headers is
+      consistent with Cap'n Proto 1.0.1.
+- [x] Confirmed the `release-mici` install branch does not contain a
+      top-level `SConstruct`; the normal source-tree SCons build cannot be
+      invoked from this release branch as if it were a development checkout.
+      The C4 runtime path loads `cereal/*.capnp` through Python pycapnp.
+- [x] Added `cereal/messaging/tests/test_c4_runtime_schema.py` to check the
+      three Event union fields, service registrations, custom struct fields,
+      ModelDataV2SP diagnostics fields, and serialization round-trips using
+      the same dynamic Cereal API used by runtime Python processes.
+- [ ] Run the new smoke test in the actual C4 Python environment:
+      `python3 -m cereal.messaging.tests.test_c4_runtime_schema`.
+      It has not yet been executed on the device.
+- [ ] The checked-in C++ generated files
+      `openpilot/cereal/gen/cpp/custom.capnp.*` and
+      `openpilot/cereal/gen/cpp/log.capnp.*` remain stale relative to the
+      updated schemas. This does not prevent the Python pycapnp runtime smoke
+      test from loading the schema, but it remains a blocker for any native
+      C++ rebuild or C++ consumer that needs the new NavAssist types. Regenerate
+      with the C4-matched Cap'n Proto 1.0.1 compiler before such a build.
+- [ ] No C++ compile or native binary rebuild has been performed. The release
+      branch lacks the top-level build graph, and no C4 device build session
+      was available in this review.
 
 ### Gaps identified in the C4 static audit
 
@@ -87,9 +101,9 @@ The official release-mici codebase remains the base.
 - [x] Cereal schema/service/Params source definitions added.
 - [x] Non-Tesla modeld DesireHelper path isolated.
 - [ ] Run Python syntax/compile checks on all imported modules.
-- [ ] Regenerate Cap'n Proto C++ artifacts with the target build toolchain.
+- [ ] Regenerate Cap'n Proto C++ artifacts with the C4-matched Cap'n Proto 1.0.1 toolchain before any native C++ rebuild.
 - [ ] Verify service registry generation against `cereal/services.py`.
-- [ ] Run imported NavAssist, lane-topology and control-gate unit tests.
+- [ ] Run the C4 Cereal runtime smoke test, then imported NavAssist, lane-topology and control-gate unit tests.
 - [ ] Resolve any test failures caused by source/target API differences.
 
 ### C4 hardware checks
