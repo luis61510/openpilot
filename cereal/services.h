@@ -85,6 +85,9 @@ static std::map<std::string, service> services = {
   { "livestreamRoadEncodeData", {"livestreamRoadEncodeData", false, 20.000000, -1, 2097152}},
   { "livestreamDriverEncodeData", {"livestreamDriverEncodeData", false, 20.000000, -1, 2097152}},
   { "customReservedRawData0", {"customReservedRawData0", true, 0.000000, -1, 256000}},
+  { "navAssistStateSP", {"navAssistStateSP", true, 20.000000, 5, 256000}},
+  { "laneTopologyStateSP", {"laneTopologyStateSP", true, 20.000000, 5, 256000}},
+  { "navLaneIntentSP", {"navLaneIntentSP", true, 20.000000, 5, 256000}},
 };
 #endif
 

@@ -106,6 +106,9 @@ _services: dict[str, tuple] = {
   "livestreamRoadEncodeData": (False, 20., None, QueueSize.MEDIUM),
   "livestreamDriverEncodeData": (False, 20., None, QueueSize.MEDIUM),
   "customReservedRawData0": (True, 0.),
+  "navAssistStateSP": (True, 20., 5, QueueSize.SMALL),
+  "laneTopologyStateSP": (True, 20., 5, QueueSize.SMALL),
+  "navLaneIntentSP": (True, 20., 5, QueueSize.SMALL),
 }
 SERVICE_LIST = {name: Service(*vals) for
                 idx, (name, vals) in enumerate(_services.items())}
