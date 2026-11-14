@@ -30,6 +30,7 @@ from openpilot.common.transformations.camera import DEVICE_CAMERAS
 from openpilot.common.transformations.model import get_warp_matrix
 from openpilot.system import sentry
 from openpilot.selfdrive.controls.lib.desire_helper import DesireHelper, LANE_CHANGE_SPEED_MIN
+from openpilot.selfdrive.controls.lib.legacy_desire_helper import LegacyDesireHelper
 from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, get_curvature_from_plan, smooth_value
 from openpilot.sunnypilot.selfdrive.controls.lib.oem_lane_change_gate import OemLaneChangeGate, lane_change_start_permissions
 from openpilot.sunnypilot.selfdrive.controls.lib.turn_entry import TurnEntryGate, TurnCompletionTracker
@@ -331,7 +332,7 @@ def main(demo=False):
   long_delay = CP.longitudinalActuatorDelay + model.LONG_SMOOTH_SECONDS
   prev_action = log.ModelDataV2.Action()
 
-  DH = DesireHelper()
+  DH = DesireHelper() if CP.brand == "tesla" else LegacyDesireHelper()
   turn_entry = TurnEntryGate()
   turn_completion = TurnCompletionTracker(CP.steerActuatorDelay)
   oem_gate = OemLaneChangeGate() if CP.brand == "tesla" else None
@@ -515,15 +516,19 @@ def main(demo=False):
         (oem_gate.lane_change_safety_blocks if lane_change_entry else oem_gate.safety_blocks)
         if oem_gate is not None else (False, False)
       )
-      DH.update(
-        sm["carState"], sm["carControl"].latActive, lane_change_prob, left_edge, right_edge,
-        nav_lane_intent=nav_lane_intent,
-        left_line_blocked=left_line_blocked, right_line_blocked=right_line_blocked,
-        left_crossing_allowed=left_crossing_allowed, right_crossing_allowed=right_crossing_allowed,
-        left_start_allowed=left_start_allowed, right_start_allowed=right_start_allowed,
-        left_safety_blocked=entry_safety_blocks[0], right_safety_blocked=entry_safety_blocks[1],
-        **turn_permissions,
-      )
+      if oem_gate is not None:
+        DH.update(
+          sm["carState"], sm["carControl"].latActive, lane_change_prob, left_edge, right_edge,
+          nav_lane_intent=nav_lane_intent,
+          left_line_blocked=left_line_blocked, right_line_blocked=right_line_blocked,
+          left_crossing_allowed=left_crossing_allowed, right_crossing_allowed=right_crossing_allowed,
+          left_start_allowed=left_start_allowed, right_start_allowed=right_start_allowed,
+          left_safety_blocked=entry_safety_blocks[0], right_safety_blocked=entry_safety_blocks[1],
+          **turn_permissions,
+        )
+      else:
+        # Keep the official release-mici lane-change behavior unchanged for non-Tesla vehicles.
+        DH.update(sm["carState"], sm["carControl"].latActive, lane_change_prob)
       if oem_gate is not None and DH.turn_maneuver.state == "active":
         plan = model_output["plan"][0]
         turn_curvature = get_curvature_from_plan(
