@@ -61,8 +61,8 @@ def test_receiver_is_always_available_and_lane_observer_stays_onroad():
 
 
 def test_developer_settings_show_automatic_pairing_without_token_or_track_toggle():
+  # Comma 4 uses the Mici UI; the legacy Tici settings layout is not its UI path.
   settings_sources = (
-    ROOT / "selfdrive/ui/layouts/settings/developer.py",
     ROOT / "selfdrive/ui/mici/layouts/settings/developer.py",
   )
   for path in settings_sources:
