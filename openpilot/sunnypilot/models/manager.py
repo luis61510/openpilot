@@ -60,11 +60,11 @@ class ModelManagerSP:
     if not self.selected_bundle:
       return
     for model in self.selected_bundle.models:
-      artifact = model.artifact
-      if artifact is not source_artifact and artifact.fileName == source_artifact.fileName:
-        artifact.downloadProgress.status = source_artifact.downloadProgress.status
-        artifact.downloadProgress.progress = source_artifact.downloadProgress.progress
-        artifact.downloadProgress.eta = source_artifact.downloadProgress.eta
+      for artifact in (model.metadata, model.artifact):
+        if artifact is not source_artifact and artifact.fileName == source_artifact.fileName:
+          artifact.downloadProgress.status = source_artifact.downloadProgress.status
+          artifact.downloadProgress.progress = source_artifact.downloadProgress.progress
+          artifact.downloadProgress.eta = source_artifact.downloadProgress.eta
 
   def _calculate_eta(self, filename: str, progress: float) -> int:
     """Calculate ETA based on elapsed time and current progress"""
@@ -238,7 +238,8 @@ class ModelManagerSP:
       raise
 
   async def _process_model(self, model, destination_path: str) -> None:
-    """Processes a single model download including verification"""
+    """Processes a single model download including metadata and model artifact verification."""
+    await self._process_artifact(model.metadata, destination_path)
     await self._process_artifact(model.artifact, destination_path)
 
   def _report_status(self) -> None:
@@ -265,16 +266,16 @@ class ModelManagerSP:
     try:
       seen_artifacts: set[str] = set()
       for model in self.selected_bundle.models:
-        artifact = model.artifact
-        if not artifact.fileName:
-          continue
-        if artifact.fileName in seen_artifacts:
-          artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.cached
-          artifact.downloadProgress.progress = 100
-          artifact.downloadProgress.eta = 0
-        else:
-          seen_artifacts.add(artifact.fileName)
-          await self._process_artifact(artifact, destination_path)
+        for artifact in (model.metadata, model.artifact):
+          if not artifact.fileName:
+            continue
+          if artifact.fileName in seen_artifacts:
+            artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.cached
+            artifact.downloadProgress.progress = 100
+            artifact.downloadProgress.eta = 0
+          else:
+            seen_artifacts.add(artifact.fileName)
+            await self._process_artifact(artifact, destination_path)
 
       if self._download_interrupted():
         raise DownloadCancelled("Download cancelled")
@@ -359,6 +360,8 @@ class ModelManagerSP:
         for model in selected_bundle.models:
           if model.artifact.fileName:
             active_files.append(model.artifact.fileName)
+          if model.metadata.fileName:
+            active_files.append(model.metadata.fileName)
 
     # Remove all files except active ones (including their chunk files)
     model_dir = Paths.model_root()

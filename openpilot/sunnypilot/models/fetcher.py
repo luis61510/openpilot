@@ -63,6 +63,8 @@ class ModelParser:
 
     model.type = model_data.get("type")
     model.artifact = ModelParser._parse_artifact(model_data.get("artifact", {}))
+    if metadata := model_data.get("metadata"):
+      model.metadata = ModelParser._parse_artifact(metadata)
     return model
 
   @staticmethod
@@ -141,12 +143,15 @@ class ModelCache:
 
 class ModelFetcher:
   """Handles fetching and caching of model data from remote source"""
-  MODEL_URL = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_v25.json"
-  MODEL_URL_CHESTNUT = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_chestnut_v28.json"
+  # Official Comma Four / MICI catalog used by sunnypilot/release-mici.
+  MODEL_URL = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_v17.json"
+  MODEL_URL_CHESTNUT = MODEL_URL
 
+  # This C4 port uses the single release-mici catalog in the Chestnut slot.
+  # There is intentionally no separate QCOM or Chestnut big-model manifest.
   MODEL_SOURCES = {
-    "qcom": (MODEL_URL, ""),
-    "chestnut": (MODEL_URL_CHESTNUT, "_Chestnut"),
+    "qcom": (None, ""),
+    "chestnut": (MODEL_URL, "_Chestnut"),
   }
 
   def __init__(self, params: Params):
@@ -171,6 +176,8 @@ class ModelFetcher:
     Returns None on transport errors. Raises on 404 and other fatal HTTP errors.
     """
     model_url, _ = self.MODEL_SOURCES[source]
+    if not model_url:
+      return []
     try:
       response = requests.get(model_url, timeout=10)
 
@@ -204,12 +211,14 @@ class ModelFetcher:
   def _cache_matches_source(source: str, cached_data: dict) -> bool:
     bundles = cached_data.get("bundles", [])
     if source == "chestnut":
-      return any(bundle.get("is_big") is True for bundle in bundles)
-    return not any(bundle.get("is_big") is True for bundle in bundles)
+      return bool(bundles) and not any(bundle.get("is_big") is True for bundle in bundles)
+    return False
 
   def get_bundles_for_source(self, source: str) -> list[custom.ModelManagerSP.ModelBundle]:
     if source not in self.MODEL_SOURCES:
       cloudlog.warning(f"Unknown model source: {source}")
+      return []
+    if not self.MODEL_SOURCES[source][0]:
       return []
 
     cached_data, is_expired = self.model_caches[source].get()
@@ -252,7 +261,9 @@ def get_cached_bundles(params: Params, source: str) -> list[custom.ModelManagerS
   if source not in ModelFetcher.MODEL_SOURCES:
     cloudlog.warning(f"Unknown model source: {source}")
     return []
-  _, suffix = ModelFetcher.MODEL_SOURCES[source]
+  model_url, suffix = ModelFetcher.MODEL_SOURCES[source]
+  if not model_url:
+    return []
   cached_data = params.get(f"ModelManager_ModelsCache{suffix}")
   if not cached_data:
     return []

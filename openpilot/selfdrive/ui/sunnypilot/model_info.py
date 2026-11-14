@@ -106,7 +106,7 @@ def model_info() -> tuple[str, str, str]:
 
 
 # mirrors the manager's ModelCache keys; the manager restamps them on a successful fetch
-MODEL_SYNC_KEYS = ("ModelManager_LastSyncTime", "ModelManager_LastSyncTime_Chestnut")
+MODEL_SYNC_KEYS = ("ModelManager_LastSyncTime_Chestnut",)
 MODEL_SYNC_TIMEOUT = 20.0
 
 

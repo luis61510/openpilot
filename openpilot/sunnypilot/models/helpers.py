@@ -16,8 +16,8 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware.hw import Paths
 from openpilot.selfdrive.modeld.helpers import chestnut_compiled, chestnut_present, chestnut_warps_compiled, compiled_model_file
 
-# SET ME TO THE EXACT JSON VERSION WE SET IN SUNNYPILOT_MODELS REPO
-REQUIRED_JSON_VERSION = 21
+# Selector version required by the official release-mici v17 catalog.
+REQUIRED_JSON_VERSION = 15
 
 CUSTOM_MODEL_PATH = Paths.model_root()
 ModelManager = custom.ModelManagerSP
@@ -66,7 +66,7 @@ def is_bundle_version_compatible(bundle: dict) -> bool:
 def _bundle_artifacts(bundle: custom.ModelManagerSP.ModelBundle) -> list[tuple[str, str]]:
   artifacts = []
   for model in getattr(bundle, 'models', []) or []:
-    for artifact in (getattr(model, 'artifact', None),):
+    for artifact in (getattr(model, 'metadata', None), getattr(model, 'artifact', None)):
       if artifact and getattr(artifact, 'fileName', None):
         sha256 = getattr(artifact.downloadUri, 'sha256', None)
         if sha256:
@@ -114,9 +114,12 @@ def _bundle_is_valid_locally(bundle: custom.ModelManagerSP.ModelBundle) -> bool:
   if not bundle.models:
     return False
   for model in bundle.models:
-    files = _artifact_loader_files(model.artifact, model_root)
-    if not files or not all(_verify_file(str(file), sha) for file, sha in files):
-      return False
+    for artifact in (getattr(model, "metadata", None), model.artifact):
+      if artifact is None or not getattr(artifact, "fileName", None):
+        continue
+      files = _artifact_loader_files(artifact, model_root)
+      if not files or not all(_verify_file(str(file), sha) for file, sha in files):
+        return False
   return True
 
 
