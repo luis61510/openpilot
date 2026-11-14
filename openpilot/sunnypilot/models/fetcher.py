@@ -163,7 +163,7 @@ class ModelFetcher:
     }
     self._refetched: set[str] = set()
     self.params.put("ModelManager_ActiveJson", {
-      "qcom": self.MODEL_URL,
+      "qcom": None,
       "chestnut": self.MODEL_URL_CHESTNUT,
     }, block=True)
 
