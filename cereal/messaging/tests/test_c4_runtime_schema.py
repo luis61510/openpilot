@@ -67,6 +67,15 @@ def test_navassist_custom_struct_fields_are_loaded_by_pycapnp():
     )
 
 
+def test_c4_navassist_process_modules_import_against_release_mici_cereal():
+  # release-mici exposes the Python Cereal API as top-level "cereal".
+  # openpilot/cereal only contains generated/native package artifacts.
+  from openpilot.sunnypilot.navassist import navassistd, lane_topologyd, nav_lane_intentd
+  assert navassistd.log is log
+  assert lane_topologyd.log is log
+  assert navassistd.messaging is lane_topologyd.messaging
+
+
 def test_navassist_messages_round_trip_through_cereal_runtime():
   for service in NAVASSIST_SERVICES:
     event = log.Event.new_message()
@@ -101,6 +110,7 @@ if __name__ == "__main__":
   test_c4_runtime_dependency_and_device_contract()
   test_navassist_cereal_event_and_service_registry()
   test_navassist_custom_struct_fields_are_loaded_by_pycapnp()
+  test_c4_navassist_process_modules_import_against_release_mici_cereal()
   test_navassist_messages_round_trip_through_cereal_runtime()
   test_model_data_v2_sp_navassist_diagnostics_fields_are_loaded()
   print("C4 Cereal runtime schema checks: PASS")
