@@ -3,15 +3,19 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CAPNP_BIN="${CAPNP_BIN:-capnp}"
-CAPNPC_BIN="${CAPNPC_BIN:-capnpc}"
+CAPNPC_CXX_BIN="${CAPNPC_CXX_BIN:-capnpc-c++}"
 OUTPUT_DIRS=("$ROOT/cereal/gen/cpp" "$ROOT/openpilot/cereal/gen/cpp")
 
-for compiler in "$CAPNP_BIN" "$CAPNPC_BIN"; do
+for compiler in "$CAPNP_BIN" "$CAPNPC_CXX_BIN"; do
   if ! command -v "$compiler" >/dev/null 2>&1; then
     echo "ERROR: $compiler not found. Activate the release-mici Python environment first." >&2
     exit 127
   fi
 done
+
+CAPNPC_CXX_PATH="$(command -v "$CAPNPC_CXX_BIN")"
+PATH="$(dirname "$CAPNPC_CXX_PATH"):$PATH"
+export PATH
 
 CAPNP_VERSION="$("$CAPNP_BIN" --version 2>&1)"
 if [[ "$CAPNP_VERSION" != *"1.0.1"* ]]; then
@@ -24,7 +28,7 @@ cd "$ROOT"
 # Regenerate both the source-tree and packaged C++ schema copies.
 for OUTPUT_DIR in "${OUTPUT_DIRS[@]}"; do
   mkdir -p "$OUTPUT_DIR"
-  "$CAPNPC_BIN" \
+  "$CAPNP_BIN" compile \
     --src-prefix=cereal \
     --src-prefix=opendbc_repo/opendbc/car \
     --import-path=opendbc_repo/opendbc/car \
