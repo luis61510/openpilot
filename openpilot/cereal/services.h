@@ -24,7 +24,7 @@ static std::map<std::string, service> services = {
   { "liveCalibration", {"liveCalibration", true, 4.000000, 4, 256000}},
   { "liveTorqueParameters", {"liveTorqueParameters", true, 4.000000, 1, 256000}},
   { "liveDelay", {"liveDelay", true, 4.000000, 1, 256000}},
-  { "operatingSystemLog", {"operatingSystemLog", true, 0.000000, -1, 256000}},
+  { "androidLog", {"androidLog", true, 0.000000, -1, 256000}},
   { "carState", {"carState", true, 100.000000, 10, 256000}},
   { "carControl", {"carControl", true, 100.000000, 10, 256000}},
   { "carOutput", {"carOutput", true, 100.000000, 10, 256000}},
@@ -85,6 +85,9 @@ static std::map<std::string, service> services = {
   { "livestreamRoadEncodeData", {"livestreamRoadEncodeData", false, 20.000000, -1, 2097152}},
   { "livestreamDriverEncodeData", {"livestreamDriverEncodeData", false, 20.000000, -1, 2097152}},
   { "customReservedRawData0", {"customReservedRawData0", true, 0.000000, -1, 256000}},
+  { "navAssistStateSP", {"navAssistStateSP", true, 20.000000, 5, 256000}},
+  { "laneTopologyStateSP", {"laneTopologyStateSP", true, 20.000000, 5, 256000}},
+  { "navLaneIntentSP", {"navLaneIntentSP", true, 20.000000, 5, 256000}},
 };
 #endif
 
