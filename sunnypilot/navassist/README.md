@@ -29,6 +29,19 @@ This branch ports the four-layer Tesla NavAssist path from
 - Cereal schemas, event IDs, services, service registry and pairing Params are
   added for NavAssist, lane topology and navigation lane intent.
 
+## Port gaps found during the C4 static audit
+
+- **C4 UI is not integrated yet.** The target release-mici files under
+  `selfdrive/ui/mici` and `selfdrive/ui/sunnypilot` do not yet contain the
+  NavAssist pairing/reset controls or the lane-topology/navigation HUD from
+  the source branch. The imported UI contract tests currently expose this gap.
+- **The control integration is tinygrad-runner-only.** NavAssist lane intent,
+  lane-boundary blocking and Tesla OEM gates are wired into
+  `sunnypilot/modeld_v2/modeld.py`; the stock runner
+  `selfdrive/modeld/modeld.py` remains unchanged. SunnyPilot's runner helper
+  defaults to stock when no active model bundle is selected, so this branch
+  does not yet provide the same NavAssist control path under the stock runner.
+
 ## Known limitations — not yet C4-validated
 
 - The Sniper branch's Tesla OEM decoder expects CAN bus 1 and 8-byte frames at
