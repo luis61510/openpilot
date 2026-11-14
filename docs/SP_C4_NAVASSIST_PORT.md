@@ -46,6 +46,31 @@ The official release-mici codebase remains the base.
 
 ### Source/static checks
 
+### Cereal / Cap'n Proto static audit (2026-11-14)
+
+- [x] The three new message structs use the original SunnyPilot reserved struct IDs:
+      `CustomReserved11` → `NavAssistStateSP`,
+      `CustomReserved12` → `LaneTopologyStateSP`,
+      `CustomReserved13` → `NavLaneIntentSP`.
+- [x] The Event fields reuse the corresponding reserved ordinals 137–139;
+      existing Event field ordinals and types were not rewritten.
+- [x] No duplicate struct IDs were found in `custom.capnp`; no duplicate
+      Event field ordinals were found in the added schema range.
+- [x] `services.py` and the checked-in `services.h` have 83 entries each;
+      the names and service settings match exactly in the static comparison.
+- [ ] **Blocking: generated C++ Cap'n Proto artifacts are stale.** The checked-in
+      `cereal/gen/cpp/custom.capnp.h/.c++` and
+      `cereal/gen/cpp/log.capnp.h/.c++` do not contain
+      `NavAssistStateSP`, `LaneTopologyStateSP`, `NavLaneIntentSP`, or the
+      Event fields at ordinals 137–139. C++ consumers cannot be considered
+      buildable until these artifacts are regenerated from the current schemas.
+- [ ] Actual `capnp compile` / C++ build was not run in this environment:
+      no Cap'n Proto compiler is installed and this repository has no GitHub
+      Actions workflow available to execute the build. The checked-in generated
+      headers declare Cap'n Proto version `1000001` (1.0.1); regeneration must
+      use the matching compiler/runtime version, then compile the Cereal C++
+      targets and run messaging tests.
+
 ### Gaps identified in the C4 static audit
 
 - [ ] Port the source branch's pairing/reset controls and navigation/lane HUD
