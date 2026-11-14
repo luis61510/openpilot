@@ -68,12 +68,20 @@ The official release-mici codebase remains the base.
       invoked from this release branch as if it were a development checkout.
       The C4 runtime path loads `cereal/*.capnp` through Python pycapnp.
 - [x] Added `cereal/messaging/tests/test_c4_runtime_schema.py` to check the
-      three Event union fields, service registrations, custom struct fields,
-      ModelDataV2SP diagnostics fields, and serialization round-trips using
-      the same dynamic Cereal API used by runtime Python processes.
+      C4 `pycapnp==2.1.0` dependency, the physical `mici` identity when on
+      comma hardware, the three Event union fields, service registrations,
+      custom struct fields, ModelDataV2SP diagnostics fields, and serialization
+      round-trips using the runtime Python Cereal API.
+- [x] Added `tools/rebuild_cereal_c4.sh`, which refuses a compiler version
+      other than Cap'n Proto 1.0.1 and regenerates the two affected C++ schema
+      outputs into `openpilot/cereal/gen/cpp`, then checks the new type names.
 - [ ] Run the new smoke test in the actual C4 Python environment:
       `python3 -m cereal.messaging.tests.test_c4_runtime_schema`.
       It has not yet been executed on the device.
+- [ ] When a native C++ rebuild is required, run
+      `bash tools/rebuild_cereal_c4.sh` from the repository root in the
+      release-mici Python environment. The helper's shell syntax was checked,
+      but the compiler invocation has not yet been executed here.
 - [ ] The checked-in C++ generated files
       `openpilot/cereal/gen/cpp/custom.capnp.*` and
       `openpilot/cereal/gen/cpp/log.capnp.*` remain stale relative to the
@@ -101,7 +109,7 @@ The official release-mici codebase remains the base.
 - [x] Cereal schema/service/Params source definitions added.
 - [x] Non-Tesla modeld DesireHelper path isolated.
 - [ ] Run Python syntax/compile checks on all imported modules.
-- [ ] Regenerate Cap'n Proto C++ artifacts with the C4-matched Cap'n Proto 1.0.1 toolchain before any native C++ rebuild.
+- [ ] Regenerate Cap'n Proto C++ artifacts with `bash tools/rebuild_cereal_c4.sh` before any native C++ rebuild.
 - [ ] Verify service registry generation against `cereal/services.py`.
 - [ ] Run the C4 Cereal runtime smoke test, then imported NavAssist, lane-topology and control-gate unit tests.
 - [ ] Resolve any test failures caused by source/target API differences.
