@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from openpilot.cereal import log
+from openpilot.common.transformations.camera import DEVICE_CAMERAS
 from openpilot.sunnypilot.navassist.lane_topologyd import IMAGE_CLASSIFIER_DIVISOR, services_healthy
 from openpilot.sunnypilot.navassist.navassistd import LOCALIZATION_MAX_AGE_NS, local_localization_valid
 from openpilot.system.manager import process_config
@@ -168,6 +169,15 @@ def test_track_hud_never_treats_seen_alone_as_service_health():
   assert "CROSSING DATA VALID" in hud
   assert 'sm.alive["navLaneIntentSP"] and sm.valid["navLaneIntentSP"]' in hud
   assert "AMap推荐" in hud
+
+
+def test_c4_camera_sensor_intrinsics_are_registered():
+  # C4's camerad probes OS04C10 first and OX03C10 as its fallback.
+  for sensor in ("os04c10", "ox03c10"):
+    camera = DEVICE_CAMERAS[("mici", sensor)]
+    assert camera.fcam.width > 0 and camera.fcam.height > 0
+    assert camera.fcam.intrinsics.shape == (3, 3)
+    assert camera.ecam.width > 0 and camera.ecam.height > 0
 
 
 class FakeParams:
