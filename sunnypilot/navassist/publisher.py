@@ -119,7 +119,7 @@ def build_nav_assist_message(current: AcceptedSnapshot | None, now_ns: int, *, l
 
   phone_observations_valid = _phone_observations_valid(snapshot)
   control_source_valid = snapshot.source_platform in ("android", "ios") and snapshot.navigation_mode == "realtime"
-  # The phone SDK owns route progress and maneuver distance. C3XL localization
+  # The phone SDK owns route progress and maneuver distance. On-device localization
   # and phone observation quality remain visible diagnostics, but they do not
   # veto an otherwise fresh, matched realtime snapshot. AMap does not promise
   # periodic guidance callbacks when an instruction is unchanged, so the
