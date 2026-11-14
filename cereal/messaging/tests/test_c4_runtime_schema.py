@@ -5,6 +5,9 @@ They intentionally do not pretend to compile the checked-in C++ generated files:
 the release-mici install branch does not include the top-level SCons build graph.
 """
 
+import os
+from importlib.metadata import version
+
 from cereal import custom, log
 from cereal.services import SERVICE_LIST
 
@@ -31,6 +34,15 @@ EXPECTED_CUSTOM_FIELDS = (
     "allowUnknownCrossing", "ignoreSolidBoundary",
   }),
 )
+
+
+def test_c4_runtime_dependency_and_device_contract():
+  assert version("pycapnp") == "2.1.0", "release-mici runtime requires pycapnp 2.1.0"
+
+  if os.path.isfile("/TICI"):
+    from openpilot.system.hardware import HARDWARE, TICI, PC
+    assert TICI and not PC
+    assert HARDWARE.get_device_type().lower() == "mici", "this port targets Comma 4 (mici)"
 
 
 def test_navassist_cereal_event_and_service_registry():
@@ -79,6 +91,7 @@ def test_model_data_v2_sp_navassist_diagnostics_fields_are_loaded():
 
 
 if __name__ == "__main__":
+  test_c4_runtime_dependency_and_device_contract()
   test_navassist_cereal_event_and_service_registry()
   test_navassist_custom_struct_fields_are_loaded_by_pycapnp()
   test_navassist_messages_round_trip_through_cereal_runtime()
