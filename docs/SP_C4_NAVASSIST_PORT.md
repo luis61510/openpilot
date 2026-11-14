@@ -73,30 +73,32 @@ The official release-mici codebase remains the base.
       custom struct fields, ModelDataV2SP diagnostics fields, and serialization
       round-trips using the runtime Python Cereal API.
 - [x] Added `tools/rebuild_cereal_c4.sh`, which refuses a compiler version
-      other than Cap'n Proto 1.0.1 and regenerates the two affected C++ schema
-      outputs into `openpilot/cereal/gen/cpp`, then checks the new type names.
+      other than Cap'n Proto 1.0.1, regenerates both `cereal/gen/cpp` and
+      `openpilot/cereal/gen/cpp`, and synchronizes both generated service
+      registries from `cereal/services.py`.
 - [ ] Run the new smoke test in the actual C4 Python environment:
       `python3 -m cereal.messaging.tests.test_c4_runtime_schema`.
       It has not yet been executed on the device.
 - [ ] When a native C++ rebuild is required, run
       `bash tools/rebuild_cereal_c4.sh` from the repository root in the
-      release-mici Python environment. The helper's shell syntax was checked,
-      but the compiler invocation has not yet been executed here.
-- [ ] The checked-in C++ generated files
-      `openpilot/cereal/gen/cpp/custom.capnp.*` and
-      `openpilot/cereal/gen/cpp/log.capnp.*` remain stale relative to the
-      updated schemas. This does not prevent the Python pycapnp runtime smoke
-      test from loading the schema, but it remains a blocker for any native
-      C++ rebuild or C++ consumer that needs the new NavAssist types. Regenerate
-      with the C4-matched Cap'n Proto 1.0.1 compiler before such a build.
+      release-mici Python environment. The updated helper has not yet been
+      executed; neither shell validation nor compiler invocation is claimed.
+- [ ] The checked-in C++ generated files in both `cereal/gen/cpp` and
+      `openpilot/cereal/gen/cpp` remain stale relative to the updated schemas.
+      This does not prevent the Python pycapnp runtime smoke test from loading
+      the schema, but it remains a blocker for a native C++ rebuild or C++
+      consumer that needs the new NavAssist types. Regenerate both copies with
+      the C4-matched Cap'n Proto 1.0.1 compiler before such a build.
 - [ ] No C++ compile or native binary rebuild has been performed. The release
       branch lacks the top-level build graph, and no C4 device build session
       was available in this review.
 
 ### Gaps identified in the C4 static audit
 
-- [ ] Port the source branch's pairing/reset controls and navigation/lane HUD
-      into the release-mici C4 UI paths; current target UI files are unchanged.
+- [x] Add NavAssist phone-pairing status and a confirmed, offroad-only
+      pairing-reset action to the C4 Mici developer settings.
+- [ ] Port the source branch's lane-topology/navigation HUD into the C4
+      onroad UI; this remains a visible UI gap.
 - [x] Add equivalent Tesla NavAssist control integration to the stock model
       runner; non-Tesla vehicles retain the preserved legacy DesireHelper path.
       Runtime behavior still requires C4 validation.
@@ -113,7 +115,9 @@ The official release-mici codebase remains the base.
 - [x] Non-Tesla modeld DesireHelper path isolated.
 - [ ] Run Python syntax/compile checks on all imported modules.
 - [ ] Regenerate Cap'n Proto C++ artifacts with `bash tools/rebuild_cereal_c4.sh` before any native C++ rebuild.
-- [ ] Verify service registry generation against `cereal/services.py`.
+- [x] Synchronize `cereal/services.h` and the packaged
+      `openpilot/cereal/services.h` with all three NavAssist services.
+- [ ] Execute the regeneration helper and verify its generated outputs on C4.
 - [ ] Run the C4 Cereal runtime smoke test, then imported NavAssist, lane-topology and control-gate unit tests.
 - [ ] Resolve any test failures caused by source/target API differences.
 
