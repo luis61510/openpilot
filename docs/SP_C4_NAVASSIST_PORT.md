@@ -81,8 +81,8 @@ The official release-mici codebase remains the base.
       It has not yet been executed on the device.
 - [ ] When a native C++ rebuild is required, run
       `bash tools/rebuild_cereal_c4.sh` from the repository root in the
-      release-mici Python environment. The updated helper has not yet been
-      executed; neither shell validation nor compiler invocation is claimed.
+      release-mici Python environment. The exact script passed `bash -n`
+      syntax validation; its Cap'n Proto compiler invocation has not run.
 - [ ] The checked-in C++ generated files in both `cereal/gen/cpp` and
       `openpilot/cereal/gen/cpp` remain stale relative to the updated schemas.
       This does not prevent the Python pycapnp runtime smoke test from loading
