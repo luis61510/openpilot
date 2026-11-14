@@ -74,6 +74,7 @@ def test_c4_navassist_process_modules_import_against_release_mici_cereal():
   assert navassistd.log is log
   assert lane_topologyd.log is log
   assert navassistd.messaging is lane_topologyd.messaging
+  assert navassistd.messaging is nav_lane_intentd.messaging
 
 
 def test_navassist_messages_round_trip_through_cereal_runtime():
