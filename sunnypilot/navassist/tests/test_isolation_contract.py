@@ -71,6 +71,8 @@ def test_developer_settings_show_automatic_pairing_without_token_or_track_toggle
     assert "NavAssistToken" not in source
     assert "NavAssistTrackMode" not in source
     assert "pair" in source.lower()
+    assert "if not ui_state.is_offroad()" in source
+    assert 'put_bool("NavAssistPairingReset", True' in source
 
 
 def test_navigation_control_has_no_geofence_configuration_or_gate():
