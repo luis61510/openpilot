@@ -16,8 +16,8 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware.hw import Paths
 from openpilot.selfdrive.modeld.helpers import chestnut_compiled, chestnut_present, chestnut_warps_compiled, compiled_model_file
 
-# Selector version required by the official release-mici v17 catalog.
-REQUIRED_JSON_VERSION = 15
+# Selector version required by the current official QCOM v26 and Chestnut v28 catalogs.
+REQUIRED_JSON_VERSION = 21
 
 CUSTOM_MODEL_PATH = Paths.model_root()
 ModelManager = custom.ModelManagerSP
@@ -50,9 +50,8 @@ def _verify_file(file_path: str, expected_hash: str) -> bool:
 
 def is_bundle_version_compatible(bundle: dict) -> bool:
   """
-  The bundle parsed from the json specifies a `minimum_selector_version`, which defines the minimum selector version
-  required to load the model. This function ensures that:
-    the bundle MUST match the `REQUIRED_JSON_VERSION` set here in helpers.
+  The official QCOM and Chestnut manifests specify minimum_selector_version.
+  This selector accepts only the schema version implemented by this branch.
   """
   # Accept both cereal's camelCase representation and the source JSON's
   # snake_case key. The manifest itself uses minimum_selector_version.

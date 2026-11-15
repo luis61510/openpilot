@@ -123,10 +123,11 @@ class ModelsLayoutMici(NavScroller):
     self.focused_widget = self.select_model_btn
 
     hardware_btns = []
-    # Use the slot selected by current hardware state; the C4 catalog is
-    # available in both slots so this view always matches the active runtime.
+    # Show both independent C4 model catalogs. The active marker identifies
+    # which runtime slot currently drives; the other slot can be prepared for
+    # use when its hardware backend is available.
     active = active_source()
-    for source, label in ((active, tr("C4 models")),):
+    for source, label in (("qcom", tr("Small Models")), ("chestnut", tr("Big Models"))):
       bundle = get_selected_bundle(ui_state.params, source)
       value = (bundle.internalName if bundle else default_model_name(source)).lower()
       if source == active:

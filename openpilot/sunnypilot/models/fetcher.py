@@ -143,17 +143,15 @@ class ModelCache:
 
 class ModelFetcher:
   """Handles fetching and caching of model data from remote source"""
-  # Official Comma Four / MICI catalog used by sunnypilot/release-mici.
-  MODEL_URL = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_v17.json"
-  MODEL_URL_CHESTNUT = MODEL_URL
+  # Official sunnypilot catalogs: QCOM small models and Chestnut big models.
+  MODEL_URL = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_v26.json"
+  MODEL_URL_CHESTNUT = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_chestnut_v28.json"
 
-  # This C4 port uses the single release-mici catalog in the Chestnut slot.
-  # There is intentionally no separate QCOM or Chestnut big-model manifest.
-  # C4 may expose either runtime slot depending on Chestnut detection.
-  # Keep the official catalog available in both slots.
+  # Keep independent source URLs and cache keys. The model manager exposes
+  # both catalogs so users can browse/download either size on Comma Four.
   MODEL_SOURCES = {
     "qcom": (MODEL_URL, ""),
-    "chestnut": (MODEL_URL, "_Chestnut"),
+    "chestnut": (MODEL_URL_CHESTNUT, "_Chestnut"),
   }
 
   def __init__(self, params: Params):
@@ -165,7 +163,7 @@ class ModelFetcher:
     }
     self._refetched: set[str] = set()
     self.params.put("ModelManager_ActiveJson", {
-      "qcom": None,
+      "qcom": self.MODEL_URL,
       "chestnut": self.MODEL_URL_CHESTNUT,
     }, block=True)
 
