@@ -96,7 +96,7 @@ def _fetch_piece(url: str, path: str, index: int, start: int, end: int | None, p
           raise ValueError(f"server ignored byte range for {label}")
         with open(path, "r+b") as f:
           f.seek(start)
-          for block in response.iter_content(chunk_size=128 * 1000):
+          for block in response.iter_content(chunk_size=block_size):
             if cancel.is_set():
               raise DownloadCancelled("Download cancelled")
             if not block:
