@@ -358,6 +358,8 @@ class ModelManagerSP:
             if not await verify_file(full_path, expected_hash):
               raise ValueError(f"Hash validation failed for {filename}")
           break
+        except DownloadCancelled:
+          raise
         except Exception as e:
           if attempt == len(download_urls) - 1:
             raise
