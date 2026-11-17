@@ -809,9 +809,6 @@ class TestLiveModelManifest(OpenpilotTestCase):
     assert not dead, "unreachable model URLs:\n" + "\n".join(dead)
 
 
-if __name__ == '__main__':
-  unittest.main()
-
 class TestModelDownloadUrls(unittest.TestCase):
   def test_huggingface_url_prefers_mirror_and_keeps_fallback(self):
     url = "https://huggingface.co/owner/repo/resolve/main/model.pkl?download=true"
