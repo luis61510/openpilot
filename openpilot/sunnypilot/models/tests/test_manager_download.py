@@ -518,6 +518,43 @@ class TestModelFetcherSources(OpenpilotTestCase):
   def test_get_bundles_for_source_unknown(self):
     assert ModelFetcher(mock.MagicMock()).get_bundles_for_source("bogus") == []
 
+  def test_manifest_urls_include_proxy_and_official_fallbacks(self):
+    fetcher = ModelFetcher(mock.MagicMock())
+    urls = fetcher._manifest_urls("qcom")
+    assert urls[0].startswith("https://ghfast.top/https://raw.githubusercontent.com/")
+    assert urls[1] == ModelFetcher.MODEL_URL
+    assert urls[2].startswith("https://cdn.jsdelivr.net/gh/sunnypilot/sunnypilot-models@gh-pages/")
+    assert len(urls) == len(set(urls))
+
+  def test_cache_source_validation_rejects_wrong_size_catalog(self):
+    small = {"bundles": [manifest_bundle("small", "aaa", is_big=False)]}
+    big = {"bundles": [manifest_bundle("big", "bbb", is_big=True)]}
+    assert ModelFetcher._cache_matches_source("qcom", small)
+    assert ModelFetcher._cache_matches_source("chestnut", big)
+    assert not ModelFetcher._cache_matches_source("qcom", big)
+    assert not ModelFetcher._cache_matches_source("chestnut", small)
+
+  def test_manifest_fetch_falls_back_when_github_proxy_is_unreachable(self):
+    fetcher = ModelFetcher(mock.MagicMock())
+    manifest = {"bundles": [manifest_bundle("small", "aaa", is_big=False)]}
+    response = mock.Mock()
+    response.json.return_value = manifest
+    response.raise_for_status.return_value = None
+    fetcher.model_caches["qcom"].set = mock.Mock()
+
+    with mock.patch.object(fetcher, "_manifest_urls", return_value=("https://proxy.invalid/catalog.json",
+                                                                     "https://raw.githubusercontent.com/catalog.json")), \\
+         mock.patch("openpilot.sunnypilot.models.fetcher.requests.get",
+                    side_effect=[requests.ConnectionError("proxy blocked"), response]) as get:
+      bundles = fetcher._fetch_and_cache_models("qcom")
+
+    assert [bundle.ref for bundle in bundles] == ["aaa"]
+    assert [call.args[0] for call in get.call_args_list] == [
+      "https://proxy.invalid/catalog.json",
+      "https://raw.githubusercontent.com/catalog.json",
+    ]
+    fetcher.model_caches["qcom"].set.assert_called_once_with(manifest)
+
   def test_get_cached_bundles_parses_source(self):
     params = self._make_params({"bundles": [manifest_bundle("small", "aaa")]},
                                {"bundles": [manifest_bundle("big", "bbb", is_big=True)]})
