@@ -543,7 +543,7 @@ class TestModelFetcherSources(OpenpilotTestCase):
     fetcher.model_caches["qcom"].set = mock.Mock()
 
     with mock.patch.object(fetcher, "_manifest_urls", return_value=("https://proxy.invalid/catalog.json",
-                                                                     "https://raw.githubusercontent.com/catalog.json")), \\
+                                                                     "https://raw.githubusercontent.com/catalog.json")), \
          mock.patch("openpilot.sunnypilot.models.fetcher.requests.get",
                     side_effect=[requests.ConnectionError("proxy blocked"), response]) as get:
       bundles = fetcher._fetch_and_cache_models("qcom")
