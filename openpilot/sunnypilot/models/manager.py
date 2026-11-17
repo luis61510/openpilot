@@ -11,6 +11,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from openpilot.common.params import Params
@@ -35,6 +36,23 @@ TRANSIENT_HTTP_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 REPORT_INTERVAL = 0.5
 NO_COMPRESSION = {"Accept-Encoding": "identity"}
 SPEED_SMOOTHING = 0.7
+
+
+def _download_urls(url: str) -> list[str]:
+  """Prefer HF-Mirror for Hugging Face files, then fall back to the original Hub."""
+  try:
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    if host == "huggingface.co":
+      mirror_url = urlunsplit((parsed.scheme, "hf-mirror.com", parsed.path, parsed.query, parsed.fragment))
+      return [mirror_url, url]
+    if host == "hf-mirror.com":
+      original_url = urlunsplit((parsed.scheme, "huggingface.co", parsed.path, parsed.query, parsed.fragment))
+      return [url, original_url]
+  except ValueError:
+    cloudlog.warning("Unable to parse model download URL; using it unchanged")
+  return [url]
+
 SPEED_FLOOR = 0.05 * 1024 ** 2
 
 
@@ -317,17 +335,33 @@ class ModelManagerSP:
         self._report_status()
         return
 
-      if len(artifact.chunks) > 0:
-        await self._download_chunked(url, full_path, artifact, skip=valid_chunks)
-        from openpilot.common.file_chunker import get_chunk_name
-        for i, chunk in enumerate(artifact.chunks):
-          chunk_path = get_chunk_name(full_path, i, len(artifact.chunks))
-          if not await verify_file(chunk_path, chunk.sha256):
-            raise ValueError(f"Hash validation failed for chunk {i+1} of {filename}")
-      else:
-        await self._download_file(url, full_path, artifact)
-        if not await verify_file(full_path, expected_hash):
-          raise ValueError(f"Hash validation failed for {filename}")
+      download_urls = _download_urls(url)
+      for attempt, download_url in enumerate(download_urls):
+        try:
+          if len(artifact.chunks) > 0:
+            from openpilot.common.file_chunker import get_chunk_name
+            # Keep verified chunks, but never mix partial data from different hosts.
+            for i in range(len(artifact.chunks)):
+              if i not in valid_chunks:
+                chunk_path = get_chunk_name(full_path, i, len(artifact.chunks))
+                if os.path.isfile(chunk_path):
+                  os.remove(chunk_path)
+            await self._download_chunked(download_url, full_path, artifact, skip=valid_chunks)
+            for i, chunk in enumerate(artifact.chunks):
+              chunk_path = get_chunk_name(full_path, i, len(artifact.chunks))
+              if not await verify_file(chunk_path, chunk.sha256):
+                raise ValueError(f"Hash validation failed for chunk {i+1} of {filename}")
+          else:
+            if os.path.isfile(full_path):
+              os.remove(full_path)
+            await self._download_file(download_url, full_path, artifact)
+            if not await verify_file(full_path, expected_hash):
+              raise ValueError(f"Hash validation failed for {filename}")
+          break
+        except Exception as e:
+          if attempt == len(download_urls) - 1:
+            raise
+          cloudlog.warning(f"Model download via {urlsplit(download_url).netloc} failed for {filename}: {e}; retrying with fallback source")
 
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloaded
       artifact.downloadProgress.progress = 100
