@@ -8,7 +8,7 @@ See the LICENSE.md file in the root directory for more details.
 import time
 import os
 import requests
-from requests.exceptions import (SSLError, RequestException, HTTPError)
+from requests.exceptions import (SSLError, RequestException)
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware.hw import Paths
