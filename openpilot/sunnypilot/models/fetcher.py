@@ -148,11 +148,32 @@ class ModelFetcher:
   MODEL_URL_CHESTNUT = "https://raw.githubusercontent.com/sunnypilot/sunnypilot-models/refs/heads/gh-pages/docs/driving_models_chestnut_v28.json"
 
   # Keep independent source URLs and cache keys. The model manager exposes
-  # both catalogs so users can browse/download either size on Comma Four.
+  # both official catalogs so users can browse/download either size on Comma Four.
   MODEL_SOURCES = {
     "qcom": (MODEL_URL, ""),
     "chestnut": (MODEL_URL_CHESTNUT, "_Chestnut"),
   }
+
+  @classmethod
+  def _manifest_urls(cls, source: str) -> tuple[str, ...]:
+    """Return ordered mirrors for the official SunnyPilot model catalog.
+
+    The canonical raw GitHub URL remains the source of truth. Try the GitHub
+    proxy first for devices with restricted GitHub access, then the official
+    endpoint, and finally jsDelivr as a CDN fallback.
+    """
+    if source not in cls.MODEL_SOURCES:
+      return ()
+    canonical_url = cls.MODEL_SOURCES[source][0]
+    if not canonical_url:
+      return ()
+
+    filename = canonical_url.rsplit("/", 1)[-1]
+    return (
+      f"https://ghfast.top/{canonical_url}",
+      canonical_url,
+      f"https://cdn.jsdelivr.net/gh/sunnypilot/sunnypilot-models@gh-pages/docs/{filename}",
+    )
 
   def __init__(self, params: Params):
     self.params = params
@@ -172,45 +193,62 @@ class ModelFetcher:
     return "chestnut" if chestnut_present else "qcom"
 
   def _fetch_and_cache_models(self, source: str) -> list[custom.ModelManagerSP.ModelBundle] | None:
-    """Fetches fresh model data from remote and updates cache.
-    Returns None on transport errors. Raises on 404 and other fatal HTTP errors.
+    """Fetch and cache a complete, source-matched official catalog.
+
+    Try the mirror endpoints in order. An unavailable or stale endpoint must
+    not prevent trying the next one, and partial/incompatible catalogs are never
+    written to Params. Return None only when every endpoint fails validation.
     """
-    model_url, _ = self.MODEL_SOURCES[source]
-    if not model_url:
+    if source not in self.MODEL_SOURCES or not self.MODEL_SOURCES[source][0]:
       return []
-    try:
-      response = requests.get(model_url, timeout=10)
 
-      # Explicitly handle 404 differently
-      if response.status_code == 404:
-        cloudlog.error(f"Models URL returned 404 Not Found: {model_url}")
-        raise HTTPError(f"404 Not Found: {model_url}", response=response)
+    for model_url in self._manifest_urls(source):
+      try:
+        response = requests.get(model_url, timeout=15)
+        response.raise_for_status()
+        json_data = response.json()
 
-      # Raise for any other 4xx/5xx
-      response.raise_for_status()
+        if not isinstance(json_data, dict) or not self._cache_matches_source(source, json_data):
+          cloudlog.warning(f"Model catalog from {model_url} is not a valid {source} catalog")
+          continue
 
-      json_data = response.json()
-      parsed = self.model_parser.parse_models(json_data)
-      if parsed:
+        parsed = self.model_parser.parse_models(json_data)
+        if not parsed or len(parsed) != len(json_data["bundles"]):
+          cloudlog.warning(f"Model catalog from {model_url} contains unsupported or invalid bundles")
+          continue
+
         self.model_caches[source].set(json_data)
-        cloudlog.debug(f"Successfully updated models cache for {source}")
-      return parsed
+        cloudlog.info(f"Successfully refreshed {source} model catalog: {len(parsed)} models from {model_url}")
+        return parsed
 
-    except ConnectionError as e:
-      cloudlog.warning(f"DNS/connection error while fetching models: {e}")
-    except SSLError as e:
-      cloudlog.warning(f"SSL error while fetching models: {e}")
-    except RequestException as e:
-      cloudlog.warning(f"Request transport error while fetching models: {e}")
-    except Exception as e:
-      cloudlog.exception(f"Unexpected error fetching models: {e}")
+      except (SSLError, RequestException, ValueError) as e:
+        cloudlog.warning(f"Failed to fetch {source} model catalog from {model_url}: {e}")
+      except Exception as e:
+        cloudlog.exception(f"Unexpected error fetching {source} model catalog from {model_url}: {e}")
 
     return None
 
   @staticmethod
   def _cache_matches_source(source: str, cached_data: dict) -> bool:
-    # Both C4 runtime slots consume the same official release-mici catalog.
-    return source in ModelFetcher.MODEL_SOURCES and bool(cached_data.get("bundles", []))
+    """Reject a cache unless every entry belongs to this hardware catalog.
+
+    QCOM is the small-model catalog (is_big=false); Chestnut is the big-model
+    catalog (is_big=true). All entries must use the selector schema implemented
+    by this branch so the device list cannot silently omit newer bundles.
+    """
+    if source not in ModelFetcher.MODEL_SOURCES or not isinstance(cached_data, dict):
+      return False
+    bundles = cached_data.get("bundles")
+    if not isinstance(bundles, list) or not bundles:
+      return False
+
+    expected_is_big = source == "chestnut"
+    return all(
+      isinstance(bundle, dict)
+      and bool(bundle.get("is_big", False)) == expected_is_big
+      and is_bundle_version_compatible(bundle)
+      for bundle in bundles
+    )
 
   def get_bundles_for_source(self, source: str) -> list[custom.ModelManagerSP.ModelBundle]:
     if source not in self.MODEL_SOURCES:
