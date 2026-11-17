@@ -834,3 +834,6 @@ class TestModelDownloadUrls(unittest.TestCase):
     url = "https://example.com/models/model.pkl"
     self.assertEqual(manager_module._download_urls(url), [url])
 
+
+if __name__ == '__main__':
+  unittest.main()
