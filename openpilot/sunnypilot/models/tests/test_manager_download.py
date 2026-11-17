@@ -811,3 +811,29 @@ class TestLiveModelManifest(OpenpilotTestCase):
 
 if __name__ == '__main__':
   unittest.main()
+
+class TestModelDownloadUrls(unittest.TestCase):
+  def test_huggingface_url_prefers_mirror_and_keeps_fallback(self):
+    url = "https://huggingface.co/owner/repo/resolve/main/model.pkl?download=true"
+    self.assertEqual(
+      manager_module._download_urls(url),
+      [
+        "https://hf-mirror.com/owner/repo/resolve/main/model.pkl?download=true",
+        url,
+      ],
+    )
+
+  def test_mirror_url_keeps_mirror_first_and_adds_original_fallback(self):
+    url = "https://hf-mirror.com/owner/repo/resolve/main/model.pkl"
+    self.assertEqual(
+      manager_module._download_urls(url),
+      [
+        url,
+        "https://huggingface.co/owner/repo/resolve/main/model.pkl",
+      ],
+    )
+
+  def test_non_huggingface_url_is_unchanged(self):
+    url = "https://example.com/models/model.pkl"
+    self.assertEqual(manager_module._download_urls(url), [url])
+
