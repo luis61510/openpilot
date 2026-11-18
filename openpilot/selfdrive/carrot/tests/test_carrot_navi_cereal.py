@@ -142,8 +142,7 @@ class CarrotNaviConsumerTest(unittest.TestCase):
   def test_state_adapter_preserves_navigation_without_gps_control_side_effects(self):
     payload = build_carrot_navi_payload(sample_snapshot(), publish_mono_ns=123456789)
     state = state_from_cereal(SimpleNamespace(**payload))
-    self.assertEqual(state.latitude, 30.5)
-    self.assertEqual(state.longitude, 114.3)
+    self.assertFalse(hasattr(state, "latitude"))  # phone GPS is deliberately not exposed to UI consumers
     self.assertEqual(state.road_limit_kph, 70)
     self.assertTrue(state.road_limit_valid)
     self.assertTrue(state.guidance_active)
@@ -156,13 +155,13 @@ class CarrotNaviConsumerTest(unittest.TestCase):
 
   def test_state_adapter_clamps_invalid_navigation_values(self):
     payload = build_carrot_navi_payload(sample_snapshot(), publish_mono_ns=123456789)
-    payload["vehicle"]["speedKph"] = -10
+    payload["speed"]["currentKph"] = -10
     payload["speed"]["roadLimitKph"] = -1
     payload["guidanceCurrent"]["distanceM"] = -3
     state = state_from_cereal(SimpleNamespace(**payload))
     self.assertEqual(state.speed_kph, 0.0)
     self.assertEqual(state.road_limit_kph, 0)
-    self.assertEqual(state.guidance_distance_m, 0)
+    self.assertEqual(state.distance_m, 0)
 
 
 class CarrotNaviCerealPayloadTest(unittest.TestCase):
