@@ -157,7 +157,8 @@ class CarrotNaviTransportTest(unittest.IsolatedAsyncioTestCase):
     response = await image_ws.receive_json(timeout=3)
     self.assertEqual(response["type"], "protocol_error")
     self.assertEqual(response["code"], "binary_stream_error")
-    self.assertEqual(await image_ws.close_code, 1008)
+    await image_ws.receive()
+    self.assertEqual(image_ws.close_code, 1008)
     await control_ws.close()
 
   async def test_control_disconnect_and_reconnect_creates_fresh_session(self):
