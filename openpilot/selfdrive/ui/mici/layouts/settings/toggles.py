@@ -54,7 +54,7 @@ class TogglesLayoutMici(NavScroller):
                                                    "Set speed is a maximum, not a target.\n" +
                                                    "These are alpha features. Expect mistakes.\n" +
                                                    "The path colors show acceleration and braking.")
-    self._dm_toggle = BigToggle("DM 驾驶员监控",
+    self._dm_toggle = BigToggle("DM",
       initial_state=bool(ui_state.params.get("DriverMonitoringEnabled", return_default=True)),
       toggle_callback=self._on_driver_monitoring,
       description="关闭后不启动 DM 进程。只能停车时修改，下次驾驶生效。")
