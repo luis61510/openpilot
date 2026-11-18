@@ -214,10 +214,10 @@ class CarrotNaviCerealSchemaTest(unittest.TestCase):
     nav.vehicle.latitude = 30.5
     nav.vehicle.longitude = 114.3
     nav.guidanceCurrent.mainText = "Turn left"
-    restored_nav = log.Event.from_bytes(nav_event.to_bytes())
-    self.assertEqual(restored_nav.which(), "carrotNavi")
-    self.assertEqual(restored_nav.carrotNavi.vehicle.latitude, 30.5)
-    self.assertEqual(restored_nav.carrotNavi.guidanceCurrent.mainText, "Turn left")
+    with log.Event.from_bytes(nav_event.to_bytes()) as restored_nav:
+      self.assertEqual(restored_nav.which(), "carrotNavi")
+      self.assertEqual(restored_nav.carrotNavi.vehicle.latitude, 30.5)
+      self.assertEqual(restored_nav.carrotNavi.guidanceCurrent.mainText, "Turn left")
 
     media_event = log.Event.new_message()
     media = media_event.init("carrotNaviMedia")
@@ -225,9 +225,9 @@ class CarrotNaviCerealSchemaTest(unittest.TestCase):
     media.kind = "image"
     media.name = "tbt_current_compact"
     media.payload = PNG_BYTES
-    restored_media = log.Event.from_bytes(media_event.to_bytes())
-    self.assertEqual(restored_media.which(), "carrotNaviMedia")
-    self.assertEqual(restored_media.carrotNaviMedia.payload, PNG_BYTES)
+    with log.Event.from_bytes(media_event.to_bytes()) as restored_media:
+      self.assertEqual(restored_media.which(), "carrotNaviMedia")
+      self.assertEqual(restored_media.carrotNaviMedia.payload, PNG_BYTES)
 
 
 if __name__ == "__main__":
