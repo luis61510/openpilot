@@ -1,9 +1,4 @@
-"""Read-only Carrot Navi Cereal consumer for UI and navigation integrations.
-
-This module intentionally does not alter GPS, cruise speed, lateral control, or
-route state. It provides a single validated navigation snapshot for later
-consumers while preserving the existing SunnyPilot source-of-truth rules.
-"""
+"""Validated, read-only consumer for the Carrot Navi Cereal service."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,33 +10,18 @@ from typing import Any
 MAX_NAV_AGE_SECONDS = 2.0
 
 
-@dataclass(frozen=True)
-class CarrotNaviState:
-  connected: bool
-  generation: int
-  session_id: str
-  latitude: float
-  longitude: float
-  speed_kph: float
-  road_limit_kph: int
-  road_limit_valid: bool
-  guidance_distance_m: int
-  guidance_time_sec: int
-  turn_type: int
-  main_text: str
-  route_remaining_distance_m: int
-  route_remaining_time_sec: int
-  guidance_active: bool
-  off_route: bool
-  publish_mono_time_nanos: int
+def _get(value: Any, name: str, default: Any = None) -> Any:
+  if isinstance(value, dict):
+    return value.get(name, default)
+  return getattr(value, name, default)
 
 
 def _finite(value: Any, default: float = 0.0) -> float:
   try:
-    value = float(value)
+    result = float(value)
   except (TypeError, ValueError):
     return default
-  return value if math.isfinite(value) else default
+  return result if math.isfinite(result) else default
 
 
 def _integer(value: Any, default: int = 0) -> int:
@@ -51,35 +31,76 @@ def _integer(value: Any, default: int = 0) -> int:
     return default
 
 
-def _dict(value: Any) -> dict[str, Any]:
-  return value if isinstance(value, dict) else {}
+@dataclass(frozen=True)
+class CarrotNaviState:
+  connected: bool = False
+  generation: int = 0
+  session_id: str = ""
+  publish_mono_time_nanos: int = 0
+  road_name: str = ""
+  guidance_text: str = ""
+  next_road_name: str = ""
+  distance_m: int = 0
+  guidance_time_sec: int = 0
+  turn_type: int = -1
+  road_limit_kph: int = 0
+  road_limit_valid: bool = False
+  speed_kph: float = 0.0
+  lane_count: int = 0
+  current_lane: int = -1
+  lane_distance_m: int = 0
+  traffic_visible: bool = False
+  traffic_distance_m: int = 0
+  red_on: bool = False
+  green_on: bool = False
+  left_on: bool = False
+  right_on: bool = False
+  traffic_remaining_sec: int = 0
+  route_remaining_distance_m: int = 0
+  route_remaining_time_sec: int = 0
+  guidance_active: bool = False
+  off_route: bool = False
+  route_present: bool = False
 
 
 def state_from_cereal(value: Any) -> CarrotNaviState:
-  vehicle = _dict(getattr(value, "vehicle", None))
-  guidance = _dict(getattr(value, "guidanceCurrent", None))
-  speed = _dict(getattr(value, "speed", None))
-  route = _dict(getattr(value, "route", None))
-  status = _dict(getattr(value, "navigationStatus", None))
-
+  vehicle = _get(value, "vehicle")
+  guidance = _get(value, "guidanceCurrent")
+  next_guidance = _get(value, "guidanceNext")
+  speed = _get(value, "speed")
+  lane = _get(value, "laneCurrent")
+  traffic = _get(value, "trafficSignal")
+  route = _get(value, "route")
+  status = _get(value, "navigationStatus")
   return CarrotNaviState(
-    connected=bool(getattr(value, "connected", False)),
-    generation=_integer(getattr(value, "generation", 0)),
-    session_id=str(getattr(value, "sessionId", "")),
-    latitude=_finite(vehicle.get("latitude")),
-    longitude=_finite(vehicle.get("longitude")),
-    speed_kph=max(0.0, _finite(vehicle.get("speedKph"))),
-    road_limit_kph=max(0, _integer(speed.get("roadLimitKph"))),
-    road_limit_valid=bool(speed.get("roadLimitValid", False)),
-    guidance_distance_m=max(0, _integer(guidance.get("distanceM"))),
-    guidance_time_sec=max(0, _integer(guidance.get("timeSec"))),
-    turn_type=_integer(guidance.get("turnType"), -1),
-    main_text=str(guidance.get("mainText", "")),
-    route_remaining_distance_m=max(0, _integer(route.get("remainingDistanceM"))),
-    route_remaining_time_sec=max(0, _integer(route.get("remainingTimeSec"))),
-    guidance_active=bool(status.get("guidanceActive", False)),
-    off_route=bool(status.get("offRoute", False)),
-    publish_mono_time_nanos=max(0, _integer(getattr(value, "publishMonoTimeNanos", 0))),
+    connected=bool(_get(value, "connected", False)),
+    generation=_integer(_get(value, "generation", 0)),
+    session_id=str(_get(value, "sessionId", "")),
+    publish_mono_time_nanos=max(0, _integer(_get(value, "publishMonoTimeNanos", 0))),
+    road_name=str(_get(vehicle, "roadName", "")),
+    guidance_text=str(_get(guidance, "mainText", "")),
+    next_road_name=str(_get(next_guidance, "roadName", "")),
+    distance_m=max(0, _integer(_get(guidance, "distanceM", 0))),
+    guidance_time_sec=max(0, _integer(_get(guidance, "timeSec", 0))),
+    turn_type=_integer(_get(guidance, "turnType", -1), -1),
+    road_limit_kph=max(0, _integer(_get(speed, "roadLimitKph", 0))),
+    road_limit_valid=bool(_get(speed, "roadLimitValid", False)),
+    speed_kph=max(0.0, _finite(_get(speed, "currentKph", 0))),
+    lane_count=max(0, _integer(_get(lane, "count", 0))),
+    current_lane=_integer(_get(lane, "currentLane", -1), -1),
+    lane_distance_m=max(0, _integer(_get(lane, "distanceM", 0))),
+    traffic_visible=bool(_get(traffic, "visible", False)),
+    traffic_distance_m=max(0, _integer(_get(traffic, "distanceM", 0))),
+    red_on=bool(_get(traffic, "redOn", False)),
+    green_on=bool(_get(traffic, "greenOn", False)),
+    left_on=bool(_get(traffic, "leftOn", False)),
+    right_on=bool(_get(traffic, "rightOn", False)),
+    traffic_remaining_sec=max(0, _integer(_get(traffic, "uiCounterRemainSec", 0))),
+    route_remaining_distance_m=max(0, _integer(_get(route, "remainingDistanceM", 0))),
+    route_remaining_time_sec=max(0, _integer(_get(route, "remainingTimeSec", 0))),
+    guidance_active=bool(_get(status, "guidanceActive", False)),
+    off_route=bool(_get(status, "offRoute", False)),
+    route_present=bool(_get(status, "routePresent", False)),
   )
 
 
@@ -88,7 +109,6 @@ class CarrotNaviConsumer:
                max_age_seconds: float = MAX_NAV_AGE_SECONDS) -> None:
     if messaging_module is None:
       import openpilot.cereal.messaging as messaging_module
-    self.messaging = messaging_module
     self.sm = messaging_module.SubMaster(["carrotNavi"])
     self.max_age_seconds = max(0.2, float(max_age_seconds))
     self.state: CarrotNaviState | None = None
@@ -96,18 +116,16 @@ class CarrotNaviConsumer:
   def update(self, timeout_ms: int = 0) -> bool:
     self.sm.update(timeout_ms)
     if not self.sm.updated.get("carrotNavi", False):
-      return False
-
-    message = self.sm["carrotNavi"]
+      if self.state is not None and not self._is_fresh(self.state):
+        self.state = None
+      return self.state is not None
     if not self.sm.valid.get("carrotNavi", False):
       self.state = None
       return False
-
-    candidate = state_from_cereal(message.carrotNavi)
+    candidate = state_from_cereal(self.sm["carrotNavi"].carrotNavi)
     if not candidate.connected or not self._is_fresh(candidate):
       self.state = None
       return False
-
     self.state = candidate
     return True
 
@@ -119,4 +137,4 @@ class CarrotNaviConsumer:
 
   @property
   def available(self) -> bool:
-    return self.state is not None
+    return self.state is not None and self._is_fresh(self.state)
