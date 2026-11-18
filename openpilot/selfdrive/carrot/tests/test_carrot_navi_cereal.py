@@ -2,6 +2,8 @@ import unittest
 from types import SimpleNamespace
 
 from openpilot.cereal.services import QueueSize, SERVICE_LIST
+PNG_BYTES = bytes.fromhex("89504e47")
+
 from openpilot.selfdrive.carrot.carrot_navi_cereal import (
   CarrotNaviCerealPublisher,
   build_carrot_navi_media_payload,
@@ -163,11 +165,11 @@ class CarrotNaviCerealPayloadTest(unittest.TestCase):
       kind="image", name="tbt_current_compact", sequence=11,
       source_timestamp_ms=1200, received_mono_ns=3400, present=True,
       message_type=1, format_or_reason=1, flags=0, width=1, height=1,
-      reason=None, payload=b"\\x89PNG",
+      reason=None, payload=PNG_BYTES,
     )
     payload = build_carrot_navi_media_payload(record, "session-1")
     self.assertEqual(payload["sessionId"], "session-1")
-    self.assertEqual(payload["payload"], b"\\x89PNG")
+    self.assertEqual(payload["payload"], PNG_BYTES)
     self.assertEqual(payload["width"], 1)
     self.assertTrue(payload["present"])
 
@@ -222,10 +224,10 @@ class CarrotNaviCerealSchemaTest(unittest.TestCase):
     media.schemaVersion = 1
     media.kind = "image"
     media.name = "tbt_current_compact"
-    media.payload = b"\\x89PNG"
+    media.payload = PNG_BYTES
     restored_media = log.Event.from_bytes(media_event.to_bytes())
     self.assertEqual(restored_media.which(), "carrotNaviMedia")
-    self.assertEqual(restored_media.carrotNaviMedia.payload, b"\\x89PNG")
+    self.assertEqual(restored_media.carrotNaviMedia.payload, PNG_BYTES)
 
 
 if __name__ == "__main__":
