@@ -508,27 +508,43 @@ class ModelManagerSP:
     Clears the model cache directory of all files except those in the active model bundle.
     """
 
-    # Get list of files used by both slots' selected bundles (either may become
-    # the truly active bundle depending on hardware availability)
-    active_files = []
+    # Preserve files referenced by both selected slots: either slot may become
+    # active depending on hardware availability. Include metadata, chunk payloads,
+    # and each artifact's chunk manifest so a cache cleanup cannot invalidate a
+    # selected bundle that is not currently running.
+    from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+
+    active_files: set[str] = set()
+
+    def preserve_artifact(artifact) -> None:
+      if artifact is None or not artifact.fileName:
+        return
+
+      artifact_name = artifact.fileName
+      active_files.add(artifact_name)
+
+      chunks = getattr(artifact, "chunks", None) or []
+      if chunks:
+        chunk_count = len(chunks)
+        active_files.add(get_manifest_path(artifact_name))
+        for index in range(chunk_count):
+          active_files.add(get_chunk_name(artifact_name, index, chunk_count))
+
     for source in ACTIVE_BUNDLE_KEYS:
       if selected_bundle := get_selected_bundle(self.params, source):
         for model in selected_bundle.models:
-          if model.artifact.fileName:
-            active_files.append(model.artifact.fileName)
-          if model.metadata.fileName:
-            active_files.append(model.metadata.fileName)
+          preserve_artifact(getattr(model, "metadata", None))
+          preserve_artifact(getattr(model, "artifact", None))
 
-    # Remove all files except active ones (including their chunk files)
+    # Remove all files not referenced by either selected bundle. Matching exact
+    # chunk names avoids accidentally retaining unrelated files with a shared prefix.
     model_dir = Paths.model_root()
     try:
       for filename in os.listdir(model_dir):
-        base = filename.split('.chunk')[0] if '.chunk' in filename else filename
-        if base not in active_files and filename not in active_files:
-          file_path = os.path.join(model_dir, filename)
-          if os.path.isfile(file_path):
-            os.remove(file_path)
-      cloudlog.info("Model cache cleared, keeping active model files")
+        file_path = os.path.join(model_dir, filename)
+        if filename not in active_files and os.path.isfile(file_path):
+          os.remove(file_path)
+      cloudlog.info(f"Model cache cleared, preserving {len(active_files)} active artifact files")
     except Exception as e:
       cloudlog.exception(f"Error clearing model cache: {str(e)}")
 
