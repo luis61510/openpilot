@@ -207,6 +207,7 @@ class CarrotNaviCerealSchemaTest(unittest.TestCase):
     from openpilot.cereal import log
 
     nav_event = log.Event.new_message()
+    nav_event.init("carrotNavi")
     nav_event.carrotNavi = build_carrot_navi_payload(sample_snapshot(), publish_mono_ns=3000)
     with log.Event.from_bytes(nav_event.to_bytes()) as restored_nav:
       self.assertEqual(restored_nav.which(), "carrotNavi")
@@ -221,6 +222,7 @@ class CarrotNaviCerealSchemaTest(unittest.TestCase):
       reason=None, payload=PNG_BYTES,
     )
     media_event = log.Event.new_message()
+    media_event.init("carrotNaviMedia")
     media_event.carrotNaviMedia = build_carrot_navi_media_payload(media_record, "session-1")
     with log.Event.from_bytes(media_event.to_bytes()) as restored_media:
       self.assertEqual(restored_media.which(), "carrotNaviMedia")
