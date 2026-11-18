@@ -95,8 +95,6 @@ _services: dict[str, tuple] = {
   "modelDataV2SP": (True, 20., None, QueueSize.BIG),
   "trafficRadarState": (True, 20., 5, QueueSize.SMALL),
   "liveLocationKalman": (True, 20.),
-  "carrotNavi": (True, 2.),
-  "carrotNaviMedia": (False, 20., None, QueueSize.BIG),
 
   # debug
   "uiDebug": (True, 0., 1),
@@ -109,6 +107,8 @@ _services: dict[str, tuple] = {
   "livestreamNarrowRoadEncodeData": (False, 20., None, QueueSize.MEDIUM),
   "livestreamCabinEncodeData": (False, 20., None, QueueSize.MEDIUM),
   "customReservedRawData0": (True, 0.),
+  "carrotNavi": (True, 2.),
+  "carrotNaviMedia": (False, 20., None, QueueSize.BIG),
 }
 SERVICE_LIST = {name: Service(*vals) for
                 idx, (name, vals) in enumerate(_services.items())}
