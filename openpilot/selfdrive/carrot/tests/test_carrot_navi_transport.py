@@ -25,7 +25,8 @@ class CarrotNaviTransportTest(unittest.IsolatedAsyncioTestCase):
     health = await self.client.get("/health")
     self.assertEqual(health.status, 200)
     health_data = await health.json()
-    self.assertIn("connected", health_data)
+    self.assertTrue(health_data["ok"])
+    self.assertIn("control_connected", health_data)
 
     index = await self.client.get("/")
     self.assertEqual(index.status, 200)
