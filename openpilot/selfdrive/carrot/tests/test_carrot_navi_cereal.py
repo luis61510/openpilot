@@ -207,27 +207,25 @@ class CarrotNaviCerealSchemaTest(unittest.TestCase):
     from openpilot.cereal import log
 
     nav_event = log.Event.new_message()
-    nav = nav_event.init("carrotNavi")
-    nav.schemaVersion = 1
-    nav.generation = 7
-    nav.connected = True
-    nav.vehicle.latitude = 30.5
-    nav.vehicle.longitude = 114.3
-    nav.guidanceCurrent.mainText = "Turn left"
+    nav_event.carrotNavi = build_carrot_navi_payload(sample_snapshot(), publish_mono_ns=3000)
     with log.Event.from_bytes(nav_event.to_bytes()) as restored_nav:
       self.assertEqual(restored_nav.which(), "carrotNavi")
       self.assertEqual(restored_nav.carrotNavi.vehicle.latitude, 30.5)
       self.assertEqual(restored_nav.carrotNavi.guidanceCurrent.mainText, "Turn left")
+      self.assertEqual(len(restored_nav.carrotNavi.laneAhead), 8)
 
+    media_record = SimpleNamespace(
+      kind="image", name="tbt_current_compact", sequence=11,
+      source_timestamp_ms=1200, received_mono_ns=3400, present=True,
+      message_type=1, format_or_reason=1, flags=0, width=1, height=1,
+      reason=None, payload=PNG_BYTES,
+    )
     media_event = log.Event.new_message()
-    media = media_event.init("carrotNaviMedia")
-    media.schemaVersion = 1
-    media.kind = "image"
-    media.name = "tbt_current_compact"
-    media.payload = PNG_BYTES
+    media_event.carrotNaviMedia = build_carrot_navi_media_payload(media_record, "session-1")
     with log.Event.from_bytes(media_event.to_bytes()) as restored_media:
       self.assertEqual(restored_media.which(), "carrotNaviMedia")
       self.assertEqual(restored_media.carrotNaviMedia.payload, PNG_BYTES)
+      self.assertEqual(restored_media.carrotNaviMedia.name, "tbt_current_compact")
 
 
 if __name__ == "__main__":
