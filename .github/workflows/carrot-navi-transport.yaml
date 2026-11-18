@@ -25,7 +25,7 @@ jobs:
         run: python -m compileall -q openpilot/selfdrive/carrot
       - name: Run transport and Cereal tests
         env:
-          PYTHONPATH: .
+          PYTHONPATH: .:opendbc_repo
         run: |
           python -m unittest openpilot.selfdrive.carrot.tests.test_carrot_navi_transport -v
           python -m unittest openpilot.selfdrive.carrot.tests.test_carrot_navi_cereal -v
