@@ -49,7 +49,7 @@ class TogglesLayout(Widget):
     self._toggle_defs = {
       "DriverMonitoringEnabled": (
         lambda: "DM",
-        tr_noop("Enable driver monitoring. When disabled, the DM process will not start. This setting can only be changed while parked and takes effect on the next drive."),
+        "",  # Hide the DM help indicator while keeping the toggle enabled
         "monitoring.png",
         False,
       ),
