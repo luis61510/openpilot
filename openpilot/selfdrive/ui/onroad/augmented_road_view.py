@@ -4,6 +4,7 @@ from openpilot.cereal import log
 from openpilot.cereal.visionipc import VisionStreamType
 from openpilot.selfdrive.ui import UI_BORDER_SIZE
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
+from openpilot.selfdrive.ui.onroad.carrot_navi_overlay import CarrotNaviOverlay
 from openpilot.selfdrive.ui.onroad.alert_renderer import AlertRenderer
 from openpilot.selfdrive.ui.onroad.driver_state import DriverStateRenderer
 from openpilot.selfdrive.ui.onroad.hud_renderer import HudRenderer
@@ -56,6 +57,7 @@ class AugmentedRoadView(CameraView, AugmentedRoadViewSP):
     self._hud_renderer = HudRenderer()
     self.alert_renderer = AlertRenderer()
     self.driver_state_renderer = DriverStateRenderer()
+    self.carrot_navi_overlay = CarrotNaviOverlay()
 
   def _render(self, rect):
     # Only render when system is started to avoid invalid data access
@@ -93,6 +95,7 @@ class AugmentedRoadView(CameraView, AugmentedRoadViewSP):
     self._hud_renderer.render(self._content_rect)
     self.alert_renderer.render(self._content_rect)
     self.driver_state_renderer.render(self._content_rect)
+    self.carrot_navi_overlay.render(self._content_rect)
 
     # Custom UI extension point - add custom overlays here
     # Use self._content_rect for positioning within camera bounds
