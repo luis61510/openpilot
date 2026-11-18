@@ -173,6 +173,14 @@ class CarrotNaviCerealPayloadTest(unittest.TestCase):
     self.assertEqual(payload["width"], 1)
     self.assertTrue(payload["present"])
 
+  def test_disconnected_navigation_is_published_invalid(self):
+    snapshot = sample_snapshot()
+    snapshot["connected"] = False
+    receiver = FakeReceiver(snapshot)
+    publisher = CarrotNaviCerealPublisher(receiver, messaging_module=FakeMessaging)
+    publisher.publish_once()
+    self.assertFalse(publisher.pm.sent[0][1].valid)
+
   def test_publisher_sends_navigation_and_media_services(self):
     receiver = FakeReceiver(sample_snapshot())
     publisher = CarrotNaviCerealPublisher(receiver, messaging_module=FakeMessaging)
