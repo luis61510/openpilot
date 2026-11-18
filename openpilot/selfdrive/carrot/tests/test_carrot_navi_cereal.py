@@ -2,13 +2,13 @@ import unittest
 from types import SimpleNamespace
 
 from openpilot.cereal.services import QueueSize, SERVICE_LIST
-PNG_BYTES = bytes.fromhex("89504e47")
-
 from openpilot.selfdrive.carrot.carrot_navi_cereal import (
   CarrotNaviCerealPublisher,
   build_carrot_navi_media_payload,
   build_carrot_navi_payload,
 )
+
+PNG_BYTES = bytes.fromhex("89504e47")
 
 
 class FakePubMaster:
