@@ -95,6 +95,8 @@ _services: dict[str, tuple] = {
   "modelDataV2SP": (True, 20., None, QueueSize.BIG),
   "trafficRadarState": (True, 20., 5, QueueSize.SMALL),
   "liveLocationKalman": (True, 20.),
+  "carrotNavi": (True, 2.),
+  "carrotNaviMedia": (False, 20., None, QueueSize.BIG),
 
   # debug
   "uiDebug": (True, 0., 1),
