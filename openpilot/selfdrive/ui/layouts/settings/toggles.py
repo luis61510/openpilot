@@ -48,7 +48,7 @@ class TogglesLayout(Widget):
     # param, title, desc, icon, needs_restart
     self._toggle_defs = {
       "DriverMonitoringEnabled": (
-        lambda: tr("DM Driver Monitoring"),
+        lambda: tr("DM camera"),
         tr_noop("开启驾驶员监控。关闭后不启动 DM 进程。只能停车时修改，下次驾驶生效。"),
         "monitoring.png",
         False,
