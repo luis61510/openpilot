@@ -2,7 +2,7 @@ import asyncio
 import json
 import socket
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -184,7 +184,27 @@ class CarrotNaviTransportTest(unittest.IsolatedAsyncioTestCase):
 
 
 class CarrotNaviDiscoveryTest(unittest.TestCase):
-  def test_udp_discovery_broadcast_payload(self):
+  def test_udp_beacon_enables_broadcast_and_uses_subnet_broadcast_target(self):
+    fake_socket = Mock()
+    with (
+      patch("openpilot.selfdrive.carrot.carrot_navi.discovery_targets",
+            return_value=(("192.0.2.10", "192.0.2.255"),)),
+      patch("openpilot.selfdrive.carrot.carrot_navi.socket.socket",
+            return_value=fake_socket),
+    ):
+      CarrotNaviDiscoveryBeacon().broadcast_once()
+
+    fake_socket.setsockopt.assert_called_once_with(
+      socket.SOL_SOCKET, socket.SO_BROADCAST, 1,
+    )
+    fake_socket.bind.assert_called_once_with(("192.0.2.10", 0))
+    sent_payload, destination = fake_socket.sendto.call_args.args
+    self.assertEqual(destination, ("192.0.2.255", DISCOVERY_PORT))
+    self.assertEqual(json.loads(sent_payload.decode("utf-8")),
+                     {"ip": "192.0.2.10", "navi_debug": 1})
+    fake_socket.close.assert_called_once()
+
+  def test_udp_discovery_datagram_loopback(self):
     listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     listener.settimeout(2.0)
     try:
