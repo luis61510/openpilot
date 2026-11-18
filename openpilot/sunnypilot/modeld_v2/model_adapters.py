@@ -19,13 +19,14 @@ from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 from tinygrad.device import Buffer
 from tinygrad.dtype import DType, dtypes
 from tinygrad.helpers import round_up
+from openpilot.sunnypilot.modeld_v2.helpers import load_model_file
 from tinygrad.tensor import Tensor
 from tinygrad.uop.ops import UOp
 
 
 def input_view(buffer: Buffer, shape: tuple[int, ...], dtype: DType, offset: int) -> Tensor:
-  view = buffer.view(math.prod(shape), dtype, offset).ensure_allocated()
-  return Tensor(UOp.from_buffer(view)).reshape(shape)
+  view = buffer.view(math.prod(shape) * dtype.itemsize, offset).ensure_allocated()
+  return Tensor(UOp.from_buffer(view, dtype)).reshape(shape)
 
 
 class BaseModelAdapter:
@@ -67,14 +68,17 @@ class BaseModelAdapter:
 
     warp_dir = MODELS_DIR if self.is_native else Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
     warp_name = f'{"big_" if self.chestnut else ""}driving_warp_{self.cam_w}x{self.cam_h}_tinygrad.pkl'
-    with open(warp_dir / warp_name, 'rb') as f:
-      warp_data = pickle.load(f)
-      run_warp = warp_data['run']
-      if 'input_specs' in warp_data and 'input_frame' in warp_data['input_specs']:
-        self.warp_frame_size = warp_data['input_specs']['input_frame'][0][1]
-      else:
-        self.warp_frame_size = self.nv12_info[3] if self.chestnut else self.frame_copy_size
-      return run_warp
+    warp_path = warp_dir / warp_name
+    warp_data = load_model_file(str(warp_path), cache=False)
+    if warp_data is None:
+      with open(warp_path, 'rb') as f:
+        warp_data = pickle.load(f)
+    run_warp = warp_data['run']
+    if 'input_specs' in warp_data and 'input_frame' in warp_data['input_specs']:
+      self.warp_frame_size = warp_data['input_specs']['input_frame'][0][1]
+    else:
+      self.warp_frame_size = self.nv12_info[3] if self.chestnut else self.frame_copy_size
+    return run_warp
 
 
 class LegacyModelAdapter(BaseModelAdapter):
