@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - name: Initialize Cereal schema dependency
+        run: git submodule update --init opendbc_repo
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
