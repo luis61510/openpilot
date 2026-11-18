@@ -1,4 +1,3 @@
-import math
 import unittest
 from types import SimpleNamespace
 
@@ -203,15 +202,7 @@ class CarrotNaviCerealPayloadTest(unittest.TestCase):
 
 class CarrotNaviCerealSchemaTest(unittest.TestCase):
   def test_capnp_schema_compiles_and_round_trips_both_events(self):
-    import capnp
-    from pathlib import Path
-
-    cereal_dir = Path("openpilot/cereal").resolve()
-    opendbc_car_dir = Path("opendbc_repo/opendbc/car").resolve()
-    log = capnp.load(
-      str(cereal_dir / "log.capnp"),
-      imports=[str(cereal_dir), str(opendbc_car_dir)],
-    )
+    from openpilot.cereal import log
 
     nav_event = log.Event.new_message()
     nav = nav_event.init("carrotNavi")
