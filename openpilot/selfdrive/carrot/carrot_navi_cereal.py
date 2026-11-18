@@ -347,7 +347,7 @@ class CarrotNaviCerealPublisher:
   def publish_once(self, snapshot: dict[str, Any] | None = None) -> int:
     if snapshot is None:
       snapshot = self.receiver.cereal_snapshot()
-        payload = build_carrot_navi_payload(snapshot)
+    payload = build_carrot_navi_payload(snapshot)
     connected = bool(snapshot.get("connected", False))
     message = self.messaging.new_message("carrotNavi", valid=connected)
     message.carrotNavi = payload
