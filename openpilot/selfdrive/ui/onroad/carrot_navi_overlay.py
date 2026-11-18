@@ -37,7 +37,7 @@ class CarrotNaviOverlay:
     panel = rl.Rectangle(x, y, PANEL_WIDTH, PANEL_HEIGHT)
     rl.draw_rectangle_rounded(panel, 0.08, 8, rl.Color(10, 16, 24, 220))
 
-    title = state.guidance_text or ("导航偏航" if state.off_route else "导航中")
+    title = state.guidance_text or ("Off route" if state.off_route else "Navigation")
     rl.draw_text(title[:26], x + 22, y + 18, 34, rl.WHITE)
 
     road = state.next_road_name or state.road_name
@@ -46,26 +46,26 @@ class CarrotNaviOverlay:
 
     distance = _distance(state.distance_m) if state.distance_m else "--"
     eta = _duration(state.guidance_time_sec) if state.guidance_time_sec else "--"
-    rl.draw_text(f"{distance}  ·  {eta}", x + 22, y + 100, 27, rl.Color(255, 220, 130, 255))
+    rl.draw_text(f"{distance}  |  {eta}", x + 22, y + 100, 27, rl.Color(255, 220, 130, 255))
 
     limit = f"{state.road_limit_kph}" if state.road_limit_valid else "--"
-    rl.draw_text(f"限速 {limit} km/h", x + 22, y + 145, 25, rl.Color(160, 220, 255, 255))
+    rl.draw_text(f"Limit {limit} km/h", x + 22, y + 145, 25, rl.Color(160, 220, 255, 255))
 
     route = _distance(state.route_remaining_distance_m) if state.route_present else "--"
     lane = f"{state.current_lane + 1}/{state.lane_count}" if state.lane_count else "--"
-    rl.draw_text(f"车道 {lane}   剩余 {route}", x + 250, y + 145, 23, rl.WHITE)
+    rl.draw_text(f"Lane {lane}   Route {route}", x + 250, y + 145, 23, rl.WHITE)
 
     if state.traffic_visible:
       if state.red_on:
-        signal = "红灯"
+        signal = "Red light"
       elif state.green_on:
-        signal = "绿灯"
+        signal = "Green light"
       elif state.left_on:
-        signal = "左转灯"
+        signal = "Left signal"
       elif state.right_on:
-        signal = "右转灯"
+        signal = "Right signal"
       else:
-        signal = "信号灯"
+        signal = "Signal"
       rl.draw_text(f"{signal}  {_distance(state.traffic_distance_m)}", x + 250, y + 185, 22,
                    rl.Color(255, 190, 120, 255))
 
