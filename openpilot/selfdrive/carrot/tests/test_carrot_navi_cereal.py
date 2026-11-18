@@ -148,7 +148,11 @@ class CarrotNaviConsumerTest(unittest.TestCase):
     self.assertTrue(state.road_limit_valid)
     self.assertTrue(state.guidance_active)
     self.assertEqual(state.turn_type, 2)
-    self.assertEqual(state.main_text, "Turn left")
+    self.assertEqual(state.guidance_text, "Turn left")
+    self.assertEqual(state.lane_count, 3)
+    self.assertEqual(state.current_lane, 1)
+    self.assertEqual(state.route_remaining_distance_m, 1200)
+    self.assertTrue(state.red_on)
 
   def test_state_adapter_clamps_invalid_navigation_values(self):
     payload = build_carrot_navi_payload(sample_snapshot(), publish_mono_ns=123456789)
@@ -245,6 +249,10 @@ class CarrotNaviCerealSchemaTest(unittest.TestCase):
       self.assertEqual(restored_nav.which(), "carrotNavi")
       self.assertEqual(restored_nav.carrotNavi.vehicle.latitude, 30.5)
       self.assertEqual(restored_nav.carrotNavi.guidanceCurrent.mainText, "Turn left")
+      restored_state = state_from_cereal(restored_nav.carrotNavi)
+      self.assertEqual(restored_state.road_limit_kph, 70)
+      self.assertEqual(restored_state.guidance_text, "Turn left")
+      self.assertEqual(restored_state.lane_count, 3)
       self.assertEqual(len(restored_nav.carrotNavi.laneAhead), 8)
 
     media_record = SimpleNamespace(
