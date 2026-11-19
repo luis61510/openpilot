@@ -123,7 +123,7 @@ class _PrefixedReader:
 
   def readinto(self, buffer) -> int:
     data = self.read(len(buffer))
-    buffer[:len(data)] = data
+    memoryview(buffer)[:len(data)] = data
     return len(data)
 
   def readline(self, size: int = -1) -> bytes:
@@ -133,7 +133,7 @@ class _PrefixedReader:
       if not char:
         break
       line.extend(char)
-      if char == b'\\n':
+      if char == b'\n':
         break
     return bytes(line)
 
