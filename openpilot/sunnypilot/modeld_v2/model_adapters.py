@@ -11,7 +11,6 @@ import pickle
 import numpy as np
 
 from openpilot.common.basedir import BASEDIR
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR
 from openpilot.sunnypilot.modeld_v2.compile_modeld import (POLICY_INPUTS, derive_frame_skip,
                                                            make_split_input_queues, make_supercombo_input_queues)
 from openpilot.sunnypilot.modeld_v2.stock_dependencies import make_input_queues as stock_make_input_queues, nv12_copy_size
@@ -65,7 +64,10 @@ class BaseModelAdapter:
       self.warp_frame_size = self.nv12_info[3]
       return self.jits[(self.cam_w, self.cam_h)]
 
-    warp_dir = MODELS_DIR if self.is_native else Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
+    # Both Legacy and Native adapters use the modeld_v2 warp artifacts.
+    # MODELS_DIR points at selfdrive/modeld/models, which does not contain
+    # these SunnyPilot warp files on this branch.
+    warp_dir = Path(BASEDIR) / "openpilot/sunnypilot/modeld_v2/models"
     warp_name = f'{"big_" if self.chestnut else ""}driving_warp_{self.cam_w}x{self.cam_h}_tinygrad.pkl'
     with open(warp_dir / warp_name, 'rb') as f:
       warp_data = pickle.load(f)
@@ -98,9 +100,7 @@ class LegacyModelAdapter(BaseModelAdapter):
           self.input_shapes, self.frame_skip, device=self.QUEUE_DEV, frame_copy_size=self.frame_copy_size)
       else:
         self.input_queues, self.numpy_inputs = make_supercombo_input_queues(self.input_shapes, self.frame_skip, device=self.QUEUE_DEV)
-      self.run_policy = self.jits['run_policy'] if 'run_policy' in self.jits else self.jits[(self.cam_w, self.cam_h)]
     else:
-      self.run_policy = self.jits['run_policy']
       vision_metadata = metadata['vision']
       policy_keys = [k for k in metadata if k not in ('vision', 'warp_dev')]
       self._combined_model_type = 'split' if policy_keys == ['policy'] else 'multi_policy'
@@ -115,14 +115,36 @@ class LegacyModelAdapter(BaseModelAdapter):
       self.input_queues, self.numpy_inputs = make_split_input_queues(vision_metadata['input_shapes'], first_policy_meta['input_shapes'],
                                                                      self.frame_skip, device=self.QUEUE_DEV)
 
-    self.run_warp = self._load_warp()
+    resolution_jits = self.jits.get((self.cam_w, self.cam_h))
+    self._mici_combined = (
+      isinstance(resolution_jits, dict)
+      and callable(resolution_jits.get('run_policy'))
+      and callable(resolution_jits.get('warp_enqueue'))
+    )
+    if self._mici_combined:
+      if self.chestnut:
+        raise ValueError("release-mici combined PKL format is not supported for Chestnut models")
+      # release-mici stores both JIT entry points under the camera-resolution key.
+      self.run_policy = resolution_jits['run_policy']
+      self.warp_enqueue = resolution_jits['warp_enqueue']
+      self.WARP_DEV = self.DEV
+    else:
+      self.run_policy = self.jits['run_policy'] if 'run_policy' in self.jits else resolution_jits
+
     self._init_common()
-    if not self.chestnut:
+    if self._mici_combined:
       yuv_size = self.frame_buf_params[self._road_key][3]
-      frame_tensor = Tensor(np.zeros(yuv_size, dtype=np.uint8), device=self.WARP_DEV).contiguous().realize()
-      big_frame_tensor = Tensor(np.zeros(yuv_size, dtype=np.uint8), device=self.WARP_DEV).contiguous().realize()
-      self.run_warp(**{k: self.input_queues[k] for k in ('tfm', 'big_tfm')},
-                    frame=frame_tensor, big_frame=big_frame_tensor)
+      frame_tensor = Tensor(np.zeros(yuv_size, dtype=np.uint8), device=self.DEV).contiguous().realize()
+      big_frame_tensor = Tensor(np.zeros(yuv_size, dtype=np.uint8), device=self.DEV).contiguous().realize()
+      self.warp_enqueue(**self.input_queues, frame=frame_tensor, big_frame=big_frame_tensor)
+    else:
+      self.run_warp = self._load_warp()
+      if not self.chestnut:
+        yuv_size = self.frame_buf_params[self._road_key][3]
+        frame_tensor = Tensor(np.zeros(yuv_size, dtype=np.uint8), device=self.WARP_DEV).contiguous().realize()
+        big_frame_tensor = Tensor(np.zeros(yuv_size, dtype=np.uint8), device=self.WARP_DEV).contiguous().realize()
+        self.run_warp(**{k: self.input_queues[k] for k in ('tfm', 'big_tfm')},
+                      frame=frame_tensor, big_frame=big_frame_tensor)
 
   def copy_frames(self, bufs):
     if self.chestnut:
@@ -150,6 +172,10 @@ class LegacyModelAdapter(BaseModelAdapter):
   def run(self):
     if self.chestnut:
       return self.run_policy(**{k: self.input_queues[k] for k in POLICY_INPUTS if k in self.input_queues})
+
+    if self._mici_combined:
+      return self.run_policy(**self.input_queues, frame=self.full_frames[self._road_key],
+                             big_frame=self.full_frames[self._wide_key])
 
     warped = self.run_warp(**{k: self.input_queues[k] for k in ('tfm', 'big_tfm')},
                            frame=self.full_frames[self._road_key], big_frame=self.full_frames[self._wide_key])

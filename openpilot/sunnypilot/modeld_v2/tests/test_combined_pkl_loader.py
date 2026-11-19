@@ -25,6 +25,28 @@ ModelState = modeld_module.ModelState
 
 # Pkl discovery
 
+class TestModelPickleCompatibility(OpenpilotTestCase):
+  def test_loads_release_mici_standard_pickle(self):
+    import pickle
+    from io import BytesIO
+    from openpilot.sunnypilot.modeld_v2.helpers import load_model_pickle
+
+    payload = {'metadata': {'format': 'release-mici'}, 'value': 42}
+    loaded = load_model_pickle(BytesIO(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)))
+    assert loaded == payload
+
+  def test_loads_current_out_of_band_pickle(self, tmp_path):
+    from openpilot.sunnypilot.modeld_v2.helpers import dump_oob, load_model_pickle
+
+    payload = {'metadata': {'format': 'oob'}, 'value': 42}
+    pkl_path = tmp_path / 'model.pkl'
+    with pkl_path.open('wb') as f:
+      dump_oob(payload, f)
+    with pkl_path.open('rb') as f:
+      loaded = load_model_pickle(f)
+    assert loaded == payload
+
+
 class TestFindDrivingPkl(OpenpilotTestCase):
   def test_returns_none_when_no_bundle(self):
     assert _find_driving_pkl(None) is None
