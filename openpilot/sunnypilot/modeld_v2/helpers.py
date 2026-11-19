@@ -99,6 +99,58 @@ def load_oob(f):
   return DynamicTinygradUnpickler(io.BytesIO(opcodes), buffers=buffers()).load()
 
 
+class _PrefixedReader:
+  """Present an already-read prefix before the remainder of a streaming file."""
+
+  def __init__(self, prefix: bytes, stream):
+    self._prefix = memoryview(prefix)
+    self._offset = 0
+    self._stream = stream
+
+  def read(self, size: int = -1) -> bytes:
+    remaining = len(self._prefix) - self._offset
+    if size is None or size < 0:
+      prefix = bytes(self._prefix[self._offset:])
+      self._offset = len(self._prefix)
+      return prefix + self._stream.read()
+    if remaining >= size:
+      start = self._offset
+      self._offset += size
+      return bytes(self._prefix[start:self._offset])
+    prefix = bytes(self._prefix[self._offset:])
+    self._offset = len(self._prefix)
+    return prefix + self._stream.read(size - len(prefix))
+
+  def readinto(self, buffer) -> int:
+    data = self.read(len(buffer))
+    buffer[:len(data)] = data
+    return len(data)
+
+  def readline(self, size: int = -1) -> bytes:
+    line = bytearray()
+    while size < 0 or len(line) < size:
+      char = self.read(1)
+      if not char:
+        break
+      line.extend(char)
+      if char == b'\\n':
+        break
+    return bytes(line)
+
+
+def load_model_pickle(f):
+  """Load release-mici protocol pickles and current out-of-band model pickles."""
+  prefix = f.read(8)
+  if len(prefix) != 8:
+    raise EOFError("Truncated model pickle header")
+  reader = _PrefixedReader(prefix, f)
+  if prefix[0] == 0x80 and prefix[1] <= pickle.HIGHEST_PROTOCOL:
+    # release-mici used pickle.loads(read_file_chunked(...)).
+    return pickle.Unpickler(reader).load()
+  # Current model artifacts use dump_oob() and protocol-5 PickleBuffers.
+  return load_oob(reader)
+
+
 def dump_oob(obj, f):
   with tempfile.TemporaryFile(dir=".") as tmp:
     def buffer_cb(buffer):
