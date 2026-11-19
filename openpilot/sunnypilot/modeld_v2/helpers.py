@@ -140,15 +140,23 @@ class _PrefixedReader:
 
 def load_model_pickle(f):
   """Load release-mici protocol pickles and current out-of-band model pickles."""
-  prefix = f.read(8)
-  if len(prefix) != 8:
+  prefix = f.read(10)
+  if len(prefix) != 10:
     raise EOFError("Truncated model pickle header")
   reader = _PrefixedReader(prefix, f)
-  if prefix[0] == 0x80 and prefix[1] <= pickle.HIGHEST_PROTOCOL:
-    # release-mici used pickle.loads(read_file_chunked(...)).
+
+  # dump_oob() stores an eight-byte opcode length, followed by a protocol-5
+  # pickle stream. Checking the bytes after that length avoids misclassifying
+  # an OOB artifact whose length happens to begin with 0x80.
+  opcode_length = struct.unpack('<q', prefix[:8])[0]
+  if opcode_length > 0 and prefix[8:10] == b'\x80\x05':
+    return load_oob(reader)
+
+  # release-mici used ordinary protocol-4/5 pickle.loads(read_file_chunked(...)).
+  if prefix[0] == 0x80 and 2 <= prefix[1] <= pickle.HIGHEST_PROTOCOL:
     return pickle.Unpickler(reader).load()
-  # Current model artifacts use dump_oob() and protocol-5 PickleBuffers.
-  return load_oob(reader)
+
+  raise ValueError("Unsupported model pickle envelope")
 
 
 def dump_oob(obj, f):
