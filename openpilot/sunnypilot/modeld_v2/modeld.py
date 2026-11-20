@@ -32,6 +32,7 @@ from openpilot.common.transformations.camera import DEVICE_CAMERAS
 from openpilot.common.transformations.model import get_warp_matrix
 from openpilot.selfdrive.controls.lib.desire_helper import DesireHelper
 from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, smooth_value
+from openpilot.sunnypilot.modeld_v2.blendful import Blendful
 from openpilot.selfdrive.modeld.modeld import ChestnutGpuState
 
 from openpilot.sunnypilot.modeld_v2.fill_model_msg import fill_model_msg, fill_pose_msg, PublishState, get_curvature_from_output
@@ -366,6 +367,7 @@ def main(demo=False):
   DH = DesireHelper()
   meta_constants = load_meta_constants()
   RELC = RoadEdgeLaneChangeController()
+  blendful_visualizer = Blendful()
 
   while True:
     # Keep receiving frames until we are at least 1 frame ahead of previous extra frame
@@ -482,6 +484,9 @@ def main(demo=False):
 
       action = model.get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego)
       prev_action = action
+      # Visualization-only Blendful telemetry. Its curvature correction return value is deliberately ignored.
+      blendful_active = desire == log.Desire.none and DH.lane_change_state == log.LaneChangeState.off
+      blendful_visualizer.update(model_output, v_ego, blendful_active, action.desiredCurvature, enabled=True)
       fill_model_msg(drivingdata_send, modelv2_send, model_output, action,
                      publish_state, meta_main.frame_id, meta_extra.frame_id, frame_id,
                      frame_drop_ratio, meta_main.timestamp_eof, model_execution_time, live_calib_seen, meta_constants)
@@ -497,6 +502,13 @@ def main(demo=False):
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
       mdv2sp_send.valid = modelv2_send.valid
       mdv2sp_send.modelDataV2SP.laneTurnDirection = DH.lane_turn_direction
+      mdv2sp_send.modelDataV2SP.blendfulCurvature = blendful_visualizer.curvature
+      mdv2sp_send.modelDataV2SP.blendfulTrust = float(blendful_visualizer.trust)
+      mdv2sp_send.modelDataV2SP.modelCurvature = float(blendful_visualizer.model_curvature)
+      mdv2sp_send.modelDataV2SP.blendfulGoingAround = bool(blendful_visualizer.going_around)
+      mdv2sp_send.modelDataV2SP.blendfulLeftProb = blendful_visualizer.l_prob
+      mdv2sp_send.modelDataV2SP.blendfulRightProb = blendful_visualizer.r_prob
+      mdv2sp_send.modelDataV2SP.blendfulLaneWidth = float(blendful_visualizer.lane_width.x)
       drivingdata_send.drivingModelData.meta.laneChangeState = DH.lane_change_state
       drivingdata_send.drivingModelData.meta.laneChangeDirection = DH.lane_change_direction
 
