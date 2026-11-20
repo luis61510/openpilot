@@ -55,9 +55,6 @@ def _patch_tinygrad_fetch_fw():
     pass
 _patch_tinygrad_fetch_fw()
 
-
-_patch_tinygrad_fetch_fw()
-
 MODEL_TYPES = ('vision_policy', 'supercombo', 'vision_multi_policy')
 WARP_INPUTS = ['tfm', 'big_tfm']
 POLICY_INPUTS = ['img_q', 'big_img_q', 'feat_q', 'desire_q', 'packed_npy_inputs']
