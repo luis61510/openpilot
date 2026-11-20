@@ -122,6 +122,57 @@ class DeviceInfoLayoutMici(Widget):
     self._serial_number_text_label.render()
 
 
+
+class ChestnutGpuInfoLayout(Widget):
+  """Live Chestnut eGPU telemetry shown in Device settings."""
+
+  def __init__(self):
+    super().__init__()
+    self.set_rect(rl.Rectangle(0, 0, 360, 350))
+    self._title = UnifiedLabel("Chestnut eGPU monitor", 38, max_width=340, font_weight=FontWeight.DISPLAY, wrap_text=False)
+    self._status = UnifiedLabel("Waiting for Chestnut...", 27, max_width=340, font_weight=FontWeight.ROMAN, wrap_text=False)
+    self._rows = [
+      UnifiedLabel("", 27, max_width=340, font_weight=FontWeight.ROMAN, wrap_text=False)
+      for _ in range(7)
+    ]
+
+  def _render(self, _):
+    x = self._rect.x + 20
+    y = self._rect.y
+    self._title.set_position(x, y)
+    self._title.render()
+
+    sm = ui_state.sm
+    chestnut = sm["chestnutState"]
+    telemetry_valid = (sm.alive["chestnutState"] and sm.valid["chestnutState"] and
+                       sm.seen["chestnutState"] and chestnut.tempC > 0)
+
+    if not ui_state.chestnut_present:
+      self._status.set_text("Chestnut eGPU not detected")
+      rows = []
+    elif not telemetry_valid:
+      self._status.set_text("GPU telemetry unavailable - activate the Chestnut big model")
+      rows = []
+    else:
+      self._status.set_text("Live GPU telemetry")
+      rows = [
+        f"GPU core temperature: {chestnut.tempC:.0f} °C",
+        f"VRAM temperature: {chestnut.memoryTempC:.0f} °C",
+        f"GPU utilization: {chestnut.gpuUsagePercent:d} %",
+        f"GPU clock: {chestnut.gpuClockMhz:d} MHz",
+        f"Power draw: {chestnut.powerDrawW:.0f} / {chestnut.powerLimitW:.0f} W",
+        f"Fan speed: {chestnut.fanSpeedRpm:d} RPM",
+        f"12V rail: {chestnut.supplyVoltage / 1000:.1f} V, {chestnut.supplyCurrent / 1000:.1f} A",
+      ]
+
+    self._status.set_position(x, y + 48)
+    self._status.render()
+    for i, label in enumerate(self._rows):
+      label.set_text(rows[i] if i < len(rows) else "")
+      label.set_position(x, y + 92 + i * 34)
+      label.render()
+
+
 class PairBigButton(BigButton):
   def __init__(self):
     super().__init__("pair", "connect.comma.ai", gui_app.texture("icons_mici/settings/comma_icon.png", 33, 60))
@@ -207,6 +258,7 @@ class DeviceLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       DeviceInfoLayoutMici(),
+      ChestnutGpuInfoLayout(),
       PairBigButton(),
       review_training_guide_btn,
       cabin_cam_btn,
