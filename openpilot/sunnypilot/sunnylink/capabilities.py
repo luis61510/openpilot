@@ -42,6 +42,7 @@ CAPABILITY_FIELDS = (
   "device_type",
   "subaru_has_sng",
   "hyundai_alpha_long_available",
+  "custom_model_active",
 )
 
 CAPABILITY_LABELS: dict[str, str] = {
@@ -64,6 +65,7 @@ CAPABILITY_LABELS: dict[str, str] = {
   "device_type": "Device type",
   "subaru_has_sng": "Subaru Stop-and-Go available",
   "hyundai_alpha_long_available": "Hyundai Alpha Longitudinal available",
+  "custom_model_active": "Non-Default model selected",
 }
 
 # Explicit defaults for non-boolean capability fields
@@ -131,6 +133,9 @@ def generate_capabilities(params: Params | None = None) -> dict:
   caps["is_sp_release"] = params.get_bool("IsReleaseSpBranch")
   caps["is_development"] = params.get_bool("IsDevelopmentBranch")
   caps["stock_longitudinal"] = params.get_bool("ToyotaEnforceStockLongitudinal")
+
+  # Runner selected by process_config; Chestnut uses the big-slot runner.
+  caps["custom_model_active"] = params.get("ModelRunnerTypeCache") == custom.ModelManagerSP.Runner.tinygrad
 
   bundle = params.get("CarPlatformBundle")
   bundle_brand = _bundle_field(bundle, "brand")
