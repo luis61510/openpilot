@@ -7,7 +7,7 @@ from openpilot.common.test import OpenpilotTestCase
 from openpilot.cereal import messaging, log
 from teleoprtc.tracks import VIDEO_CLOCK_RATE
 
-from openpilot.system.webrtc.webrtcd import CerealOutgoingMessageProxy, CerealIncomingMessageProxy, ServerState, handle_get_stream
+from openpilot.system.webrtc.webrtcd import CerealOutgoingMessageProxy, CerealIncomingMessageProxy, ServerState, handle_get_stream, handle_get_schema
 from openpilot.system.webrtc.device.video import LiveStreamVideoStreamTrack
 
 
@@ -39,6 +39,37 @@ class TestStreamSession(OpenpilotTestCase):
     proxy.update()
 
     channel.send.assert_called_once_with(expected_json)
+
+  def test_outgoing_proxy_legacy_service_aliases(self, mocker):
+    test_msg = log.Event.new_message()
+    test_msg.logMonoTime = 456
+    test_msg.valid = True
+    test_msg.extrinsicsCalibration.calCycle = 7
+    expected = {"type": "liveCalibration", "logMonoTime": 456, "valid": True, "data": test_msg.extrinsicsCalibration.to_dict()}
+
+    channel = mocker.Mock()
+    channel.is_open.return_value = True
+    proxy = CerealOutgoingMessageProxy(["liveCalibration"])
+
+    def mocked_update(t):
+      proxy.sm.update_msgs(0, [test_msg])
+
+    mocker.patch.object(messaging.SubMaster, "update", side_effect=mocked_update)
+    proxy.add_channel(channel)
+    proxy.update()
+
+    channel.send.assert_called_once_with(json.dumps(expected).encode())
+
+  def test_schema_accepts_legacy_service_aliases(self):
+    response = asyncio.run(handle_get_schema(ServerState(), "liveCalibration,roadCameraState"))
+    status, body, content_type = response
+    schema = json.loads(body)
+
+    assert status == 200
+    assert content_type == "application/json; charset=utf-8"
+    assert "liveCalibration" in schema
+    assert "roadCameraState" in schema
+
 
   def test_incoming_proxy(self, mocker):
     tested_msgs = [
