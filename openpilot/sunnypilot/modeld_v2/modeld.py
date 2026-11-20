@@ -484,9 +484,6 @@ def main(demo=False):
 
       action = model.get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego)
       prev_action = action
-      # Visualization-only Blendful telemetry. Its curvature correction return value is deliberately ignored.
-      blendful_active = desire == log.Desire.none and DH.lane_change_state == log.LaneChangeState.off
-      blendful_visualizer.update(model_output, v_ego, blendful_active, action.desiredCurvature, enabled=True)
       fill_model_msg(drivingdata_send, modelv2_send, model_output, action,
                      publish_state, meta_main.frame_id, meta_extra.frame_id, frame_id,
                      frame_drop_ratio, meta_main.timestamp_eof, model_execution_time, live_calib_seen, meta_constants)
@@ -498,6 +495,9 @@ def main(demo=False):
       lane_change_prob = l_lane_change_prob + r_lane_change_prob
       left_edge, right_edge = RELC.update_and_fill(modelv2_send.modelV2, mdv2sp_send.modelDataV2SP, v_ego)
       DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob, left_edge, right_edge)
+      # Visualization-only Blendful telemetry. Its curvature correction return value is deliberately ignored.
+      blendful_active = desire == log.Desire.none and DH.lane_change_state == log.LaneChangeState.off
+      blendful_visualizer.update(model_output, v_ego, blendful_active, action.desiredCurvature, enabled=True)
       modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
       modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
       mdv2sp_send.valid = modelv2_send.valid
