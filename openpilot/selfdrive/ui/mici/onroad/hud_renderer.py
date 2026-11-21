@@ -186,8 +186,37 @@ class HudRenderer(Widget):
       self._draw_set_speed(rect)
 
     self._draw_model_source(rect)
+    self._draw_chestnut_telemetry(rect)
 
     self._draw_steering_wheel(rect)
+
+  def _draw_chestnut_telemetry(self, rect: rl.Rectangle) -> None:
+    """Show key Chestnut eGPU telemetry continuously in the on-road HUD."""
+    if not ui_state.chestnut_present:
+      return
+
+    sm = ui_state.sm
+    chestnut = sm["chestnutState"]
+    telemetry_valid = (sm.alive["chestnutState"] and sm.valid["chestnutState"] and
+                       sm.seen["chestnutState"] and chestnut.tempC > 0)
+
+    panel_width = 440
+    panel_height = 88
+    x = rect.x + rect.width - panel_width - 24
+    y = rect.y + 22
+    rl.draw_rectangle(int(x), int(y), panel_width, panel_height, rl.Color(0, 0, 0, 155))
+
+    if telemetry_valid:
+      line_1 = f"eGPU {chestnut.tempC:.0f}°C  |  VRAM {chestnut.memoryTempC:.0f}°C"
+      line_2 = f"LOAD {chestnut.gpuUsagePercent:d}%  |  {chestnut.gpuClockMhz:d} MHz  |  {chestnut.powerDrawW:.0f}/{chestnut.powerLimitW:.0f} W"
+      color = rl.Color(255, 255, 255, 240)
+    else:
+      line_1 = "eGPU connected"
+      line_2 = "Waiting for GPU telemetry"
+      color = rl.Color(255, 190, 80, 240)
+
+    rl.draw_text_ex(self._font_semi_bold, line_1, rl.Vector2(x + 16, y + 10), 26, 0, color)
+    rl.draw_text_ex(self._font_medium, line_2, rl.Vector2(x + 16, y + 48), 22, 0, color)
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     if ui_state.sm.recv_frame['selfdriveState'] < ui_state.started_frame:
