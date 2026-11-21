@@ -191,7 +191,7 @@ class HudRenderer(Widget):
     self._draw_steering_wheel(rect)
 
   def _draw_chestnut_telemetry(self, rect: rl.Rectangle) -> None:
-    """Show only four numeric Chestnut eGPU metrics in the on-road HUD."""
+    """Show four Chestnut eGPU metrics, highlighting threshold exceedances in red."""
     if not ui_state.chestnut_present:
       return
 
@@ -202,19 +202,24 @@ class HudRenderer(Widget):
     if not telemetry_valid:
       return
 
-    # Fixed order: GPU core temperature, VRAM temperature, GPU utilization, fan speed.
-    values = (f"{chestnut.tempC:.0f}°C",
-              f"{chestnut.memoryTempC:.0f}°C",
-              f"{chestnut.gpuUsagePercent:d}%",
-              f"{chestnut.fanSpeedRpm:d} RPM")
-    text = "    ".join(values)
+    # Each metric changes color independently when its threshold is exceeded.
+    metrics = (
+      (f"{chestnut.tempC:.0f}°C", chestnut.tempC > 80),
+      (f"{chestnut.memoryTempC:.0f}°C", chestnut.memoryTempC > 80),
+      (f"{chestnut.gpuUsagePercent:d}%", chestnut.gpuUsagePercent > 70),
+      (f"{chestnut.fanSpeedRpm:d} RPM", chestnut.fanSpeedRpm > 1200),
+    )
     panel_width = 460
     panel_height = 52
     x = rect.x + rect.width - panel_width - 24
     y = rect.y + 22
     rl.draw_rectangle(int(x), int(y), panel_width, panel_height, rl.Color(0, 0, 0, 155))
-    rl.draw_text_ex(self._font_semi_bold, text, rl.Vector2(x + 14, y + 12), 23, 0,
-                    rl.Color(255, 255, 255, 240))
+
+    text_x = x + 14
+    for value, alert in metrics:
+      color = rl.Color(255, 65, 65, 255) if alert else rl.Color(255, 255, 255, 240)
+      rl.draw_text_ex(self._font_semi_bold, value, rl.Vector2(text_x, y + 12), 23, 0, color)
+      text_x += measure_text_cached(self._font_semi_bold, value, 23).x + 16
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     if ui_state.sm.recv_frame['selfdriveState'] < ui_state.started_frame:
