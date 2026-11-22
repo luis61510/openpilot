@@ -209,17 +209,20 @@ class HudRenderer(Widget):
       (f"{chestnut.gpuUsagePercent:d}%", chestnut.gpuUsagePercent > 70),
       (f"{chestnut.fanSpeedRpm:d} RPM", chestnut.fanSpeedRpm > 1200),
     )
-    panel_width = 460
-    panel_height = 52
-    x = rect.x + rect.width - panel_width - 24
-    y = rect.y + 22
-    rl.draw_rectangle(int(x), int(y), panel_width, panel_height, rl.Color(0, 0, 0, 155))
+    # Render as a clean, opaque vertical stack at the far right, centered vertically.
+    # No panel, background fill, border, or drop shadow.
+    font_size = 23
+    line_height = 36
+    total_height = line_height * len(metrics)
+    right_x = rect.x + rect.width - 28
+    start_y = rect.y + (rect.height - total_height) / 2
 
-    text_x = x + 14
-    for value, alert in metrics:
-      color = rl.Color(255, 65, 65, 255) if alert else rl.Color(255, 255, 255, 240)
-      rl.draw_text_ex(self._font_semi_bold, value, rl.Vector2(text_x, y + 12), 23, 0, color)
-      text_x += measure_text_cached(self._font_semi_bold, value, 23).x + 16
+    for index, (value, alert) in enumerate(metrics):
+      color = rl.Color(255, 65, 65, 255) if alert else rl.Color(255, 255, 255, 255)
+      text_width = measure_text_cached(self._font_semi_bold, value, font_size).x
+      text_x = right_x - text_width
+      text_y = start_y + index * line_height
+      rl.draw_text_ex(self._font_semi_bold, value, rl.Vector2(text_x, text_y), font_size, 0, color)
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     if ui_state.sm.recv_frame['selfdriveState'] < ui_state.started_frame:
