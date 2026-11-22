@@ -11,8 +11,7 @@ import pyray as rl
 
 from openpilot.common.hardware import HARDWARE
 from openpilot.common.params import Params
-from openpilot.system.ui.lib.application import gui_app, FontWeight
-from openpilot.system.ui.lib.text_measure import measure_text_cached
+from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets import Widget
 
 
@@ -30,8 +29,10 @@ class ScreenSaverSP(Widget):
     self._hue = 150
     self.color = rl.color_from_hsv(self._hue, 1, 1)
 
-    self.text = "sunnypilot"
-    self.font_size = 50 if self._is_mici else 200
+    self.logo_size = 80 if self._is_mici else 220
+    self.logo = gui_app.texture("tesla_screensaver_logo.png", self.logo_size, self.logo_size)
+    self.logo_width = self.logo_size
+    self.logo_height = self.logo_size
     self._start_time = None
     self._dismiss = False
     self._screensaver_timeout = 300
@@ -64,11 +65,6 @@ class ScreenSaverSP(Widget):
 
   def _update_state(self):
     super()._update_state()
-
-    self.font = gui_app.font(FontWeight.AUDIOWIDE)
-    text_size = measure_text_cached(self.font, self.text, self.font_size, 0)
-    self.logo_width = text_size.x
-    self.logo_height = text_size.y
 
     if self._start_time and time.monotonic() - self._start_time > self._screensaver_timeout:
       self._dismiss = True
@@ -114,5 +110,5 @@ class ScreenSaverSP(Widget):
   def _render(self, rect: rl.Rectangle):
     self.set_rect(rect)
     rl.clear_background(rl.BLACK)
-    rl.draw_text_ex(self.font, self.text, rl.Vector2(int(self.x), int(self.y)), self.font_size, 0, self.color)
+    rl.draw_texture_ex(self.logo, rl.Vector2(int(self.x), int(self.y)), 0.0, 1.0, self.color)
     return -1
