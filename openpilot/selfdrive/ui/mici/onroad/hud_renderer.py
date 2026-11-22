@@ -205,7 +205,7 @@ class HudRenderer(Widget):
     # Each metric changes color independently when its threshold is exceeded.
     metrics = (
       (f"{chestnut.tempC:.0f}°", chestnut.tempC > 80),
-      (f"{chestnut.memoryTempC:.0f}°C", chestnut.memoryTempC > 80),
+      (f"{chestnut.memoryTempC:.0f}°", chestnut.memoryTempC > 80),
       (f"{chestnut.gpuUsagePercent:d}%", chestnut.gpuUsagePercent > 70),
       (f"{chestnut.fanSpeedRpm:d}", chestnut.fanSpeedRpm > 1200),
     )
