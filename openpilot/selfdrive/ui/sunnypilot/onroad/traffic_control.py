@@ -46,7 +46,8 @@ def traffic_control_highlighted(state: TrafficSignalDisplayState) -> bool:
 
 @dataclass(frozen=True)
 class TrafficSignalDisplayState:
-  visible: bool = False
+  # Keep the single-lamp HUD present even when the plan/signal is unavailable.
+  visible: bool = True
   has_signal: bool = False
   control_active: bool = False
   driver_override_active: bool = False
@@ -66,7 +67,8 @@ class TrafficSignalDisplayState:
     # flash STOP may animate it as the dark half of a flashing-green signal.
     confirmed_off_flash = phase == int(TrafficControlPhase.flashingGreenStop) and light == 4
     has_signal = bool(
-      (int(target.quality) > 0 or confirmed_off_flash)
+      mode == 4
+      and (int(target.quality) > 0 or confirmed_off_flash)
       and 0.0 <= raw_distance <= 200.0
       and (0 <= light <= 3 or confirmed_off_flash)
       and phase != int(TrafficControlPhase.passed)
