@@ -196,7 +196,8 @@ class ModelManagerSP:
     self._chunk_size = 128 * 1000  # 128 KB chunks for artifact chunk downloads
     self._download_start_times: dict[str, float] = {}  # Track start time per model
     self._download_ref: bytes | str | None = None
-    self._last_active_bundle_ref = self.active_bundle.ref if self.active_bundle else None
+    self._last_active_bundle_ref: str | None = None
+    self._active_bundle_initialized = False
 
   def _download_interrupted(self) -> bool:
     # only removal cancels: a different ref is a queued selection that
@@ -570,7 +571,12 @@ class ModelManagerSP:
         self.active_bundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
 
         active_ref = self.active_bundle.ref if self.active_bundle else None
-        if active_ref != self._last_active_bundle_ref:
+        if not self._active_bundle_initialized:
+          # Establish the boot-time model as baseline; do not override a user's
+          # saved Blendful preference just because the manager started.
+          self._last_active_bundle_ref = active_ref
+          self._active_bundle_initialized = True
+        elif active_ref != self._last_active_bundle_ref:
           blendful_supported = (self.active_bundle is not None and
                                 self.active_bundle.runner == custom.ModelManagerSP.Runner.tinygrad)
           self.params.put_bool("Blendful", blendful_supported, block=True)
