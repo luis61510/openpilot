@@ -15,3 +15,4 @@
 8、增加   lead vehicle info TTC显示信息
 9、增加   dragpilot中的opview投屏功能
 10、增加   blendful 功能，针对模型自动开启和关闭
+11、修改   屏幕保护的文字显示
