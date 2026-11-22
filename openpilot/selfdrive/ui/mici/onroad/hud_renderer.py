@@ -207,7 +207,7 @@ class HudRenderer(Widget):
       (f"{chestnut.tempC:.0f}°C", chestnut.tempC > 80),
       (f"{chestnut.memoryTempC:.0f}°C", chestnut.memoryTempC > 80),
       (f"{chestnut.gpuUsagePercent:d}%", chestnut.gpuUsagePercent > 70),
-      (f"{chestnut.fanSpeedRpm:d} RPM", chestnut.fanSpeedRpm > 1200),
+      (f"{chestnut.fanSpeedRpm:d}", chestnut.fanSpeedRpm > 1200),
     )
     # Render as a clean, opaque vertical stack at the far right, centered vertically.
     # No panel, background fill, border, or drop shadow.
