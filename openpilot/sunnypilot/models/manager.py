@@ -6,12 +6,12 @@ See the LICENSE.md file in the root directory for more details.
 """
 
 import asyncio
+import json
 import os
 import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from openpilot.common.params import Params
@@ -460,9 +460,12 @@ class ModelManagerSP:
 
     except Exception as e:
       cloudlog.error(f"Error downloading {filename}: {str(e)}")
-      for f in [full_path] + [p for p in (os.path.join(destination_path, f) for f in os.listdir(destination_path)) if filename in p]:
-        if os.path.isfile(f):  # noqa: ASYNC240
-          os.remove(f)
+      # Keep the .download sidecar and partial file after transient transport
+      # failures so the next selection can resume completed byte ranges.
+      if isinstance(e, ValueError) and "Hash validation failed" in str(e):
+        _remove_file(full_path)
+        _remove_download_state(full_path)
+      # Chunk payloads are managed and verified independently by the chunk path.
       artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.failed
       artifact.downloadProgress.eta = 0
       self._sync_artifact_progress(artifact)
