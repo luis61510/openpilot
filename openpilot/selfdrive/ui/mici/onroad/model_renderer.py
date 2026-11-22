@@ -9,6 +9,7 @@ from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
+from openpilot.selfdrive.ui.sunnypilot.onroad.chevron_metrics import ChevronMetrics
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
 from openpilot.system.ui.widgets import Widget
@@ -63,6 +64,7 @@ class ModelRenderer(Widget, ModelRendererSP):
     self._lane_line_probs = np.zeros(4, dtype=np.float32)
     self._road_edge_stds = np.zeros(2, dtype=np.float32)
     self._lead_vehicles = [LeadVehicle(), LeadVehicle()]
+    self._chevron_metrics = ChevronMetrics()
     self._path_offset_z = HEIGHT_INIT[0]
 
     # Initialize ModelPoints objects
@@ -154,8 +156,10 @@ class ModelRenderer(Widget, ModelRendererSP):
       self._draw_lane_lines()
       self._draw_path(sm)
 
-    # if render_lead_indicator and radar_state:
-    #   self._draw_lead_indicator()
+    # Lead metrics are rendered independently of the lead-chevron fill.
+    # ChevronInfo controls Off / Distance / Speed / TTC / All.
+    if render_lead_indicator and radar_state is not None and sm.valid["carState"]:
+      self._chevron_metrics.draw_lead_status(sm, radar_state, rect, self._lead_vehicles)
 
   def _update_raw_points(self, model):
     """Update raw 3D points from model data"""
