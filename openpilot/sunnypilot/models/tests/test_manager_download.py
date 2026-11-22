@@ -110,6 +110,7 @@ class ManagerDownloadTestBase(OpenpilotTestCase):
     self.manager.active_bundle = None
     self.manager.available_models = []
     self.manager.chestnut_present = False
+    self.manager._block_size = 1024
     self.manager._chunk_size = 1024
     self.manager._download_start_times = {}
 
