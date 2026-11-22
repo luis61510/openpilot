@@ -138,13 +138,21 @@ class TrafficControlRenderer(Widget):
 
     icon = traffic_card_rect(rect, self.compact)
     scale = icon.width / TRAFFIC_CARD_WIDTH
-    housing = rl.Rectangle(icon.x + 12 * scale, icon.y + 12 * scale,
-                           TRAFFIC_LIGHT_HOUSING_WIDTH * scale, TRAFFIC_LIGHT_HOUSING_HEIGHT * scale)
+    # Main HUD traffic indicator: one circular lamp instead of a vertical
+    # three-lamp traffic-light housing.
+    if self.compact:
+      housing = rl.Rectangle(icon.x + 4, icon.y + 20, 24, 24)
+      radius = 7.0
+      outline_width = 1.5
+    else:
+      housing = rl.Rectangle(icon.x + 32, icon.y + 20, 64, 64)
+      radius = 19.0
+      outline_width = 2.0
     highlighted = traffic_control_highlighted(self.state)
     if highlighted:
       rl.draw_rectangle_rounded(icon, 0.6, 24, rl.Color(CONTROL_OUTLINE.r, CONTROL_OUTLINE.g, CONTROL_OUTLINE.b, 38))
     rl.draw_rectangle_rounded(housing, 0.6, 24, rl.Color(12, 15, 19, 210))
-    rl.draw_rectangle_rounded_lines_ex(housing, 0.6, 24, (5.0 if highlighted else 2.0) * scale,
+    rl.draw_rectangle_rounded_lines_ex(housing, 0.6, 24, outline_width,
                                        CONTROL_OUTLINE if highlighted else BORDER)
 
     # One physical-style lamp replaces the former vertical red/amber/green stack.
@@ -161,9 +169,8 @@ class TrafficControlRenderer(Widget):
 
     center = rl.Vector2(housing.x + housing.width / 2, housing.y + housing.height / 2)
     active = self.state.has_signal and lamp_color is not None
-    radius = TRAFFIC_LIGHT_RADIUS * scale
     if active:
-      rl.draw_circle_v(center, (TRAFFIC_LIGHT_RADIUS + 7) * scale,
+      rl.draw_circle_v(center, radius + (2.0 if self.compact else 7.0),
                        rl.Color(lamp_color.r, lamp_color.g, lamp_color.b, 42))
       rl.draw_circle_v(center, radius, lamp_color)
     else:
