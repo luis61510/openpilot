@@ -526,7 +526,7 @@ class ModelManagerSP:
       # until the next model selection.
       blendful_supported = model_bundle.runner == custom.ModelManagerSP.Runner.tinygrad
       self.params.put_bool("Blendful", blendful_supported, block=True)
-      cloudlog.info(f"Blendful {"enabled" if blendful_supported else "disabled"} for activated model {model_bundle.internalName}")
+      cloudlog.info(f"Blendful state updated for activated model {model_bundle.internalName}: {blendful_supported}")
 
     except Exception:
       if self.selected_bundle is not None:
