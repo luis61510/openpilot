@@ -521,6 +521,13 @@ class ModelManagerSP:
       self.params.put(ACTIVE_BUNDLE_KEYS[source], model_bundle.to_dict(), block=True)
       self.active_bundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
 
+      # Apply Blendful only after the selected bundle has finished downloading
+      # and its active slot has been committed. Manual changes remain in effect
+      # until the next model selection.
+      blendful_supported = model_bundle.runner == custom.ModelManagerSP.Runner.tinygrad
+      self.params.put_bool("Blendful", blendful_supported, block=True)
+      cloudlog.info(f"Blendful {"enabled" if blendful_supported else "disabled"} for activated model {model_bundle.internalName}")
+
     except Exception:
       if self.selected_bundle is not None:
         self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.failed
