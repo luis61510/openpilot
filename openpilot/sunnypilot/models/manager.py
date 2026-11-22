@@ -196,6 +196,7 @@ class ModelManagerSP:
     self._chunk_size = 128 * 1000  # 128 KB chunks for artifact chunk downloads
     self._download_start_times: dict[str, float] = {}  # Track start time per model
     self._download_ref: bytes | str | None = None
+    self._last_active_bundle_ref = self.active_bundle.ref if self.active_bundle else None
 
   def _download_interrupted(self) -> bool:
     # only removal cancels: a different ref is a queued selection that
@@ -521,12 +522,6 @@ class ModelManagerSP:
       self.params.put(ACTIVE_BUNDLE_KEYS[source], model_bundle.to_dict(), block=True)
       self.active_bundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
 
-      # Apply Blendful only after the selected bundle has finished downloading
-      # and its active slot has been committed. Manual changes remain in effect
-      # until the next model selection.
-      blendful_supported = model_bundle.runner == custom.ModelManagerSP.Runner.tinygrad
-      self.params.put_bool("Blendful", blendful_supported, block=True)
-      cloudlog.info(f"Blendful state updated for activated model {model_bundle.internalName}: {blendful_supported}")
 
     except Exception:
       if self.selected_bundle is not None:
@@ -573,6 +568,14 @@ class ModelManagerSP:
         self.available_models = self.source_models[ModelFetcher.active_source(self.chestnut_present)]
         validate_active_bundles(self.params, self.source_models)
         self.active_bundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
+
+        active_ref = self.active_bundle.ref if self.active_bundle else None
+        if active_ref != self._last_active_bundle_ref:
+          blendful_supported = (self.active_bundle is not None and
+                                self.active_bundle.runner == custom.ModelManagerSP.Runner.tinygrad)
+          self.params.put_bool("Blendful", blendful_supported, block=True)
+          cloudlog.info(f"Blendful auto-updated for active model {active_ref or 'Default'}: {blendful_supported}")
+          self._last_active_bundle_ref = active_ref
 
         self._process_download_requests()
 
