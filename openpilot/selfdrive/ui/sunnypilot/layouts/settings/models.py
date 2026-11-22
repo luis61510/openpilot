@@ -321,7 +321,7 @@ class ModelsLayout(Widget):
     self.lane_turn_desire_toggle.action_item.set_state(turn_desire)
     self.lane_turn_value_control.set_visible(turn_desire and advanced_controls)
     self.lagd_toggle.action_item.set_state(live_delay)
-    blendful_allowed = ui_state.active_runner_tinygrad
+    blendful_allowed = ui_state.model_runner_tinygrad
     self.blendful_toggle.action_item.set_state(ui_state.params.get_bool("Blendful") if blendful_allowed else False)
     self.blendful_toggle.action_item.set_enabled(blendful_allowed)
     self.delay_control.set_visible(not live_delay and advanced_controls)
