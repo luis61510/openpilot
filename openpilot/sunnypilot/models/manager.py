@@ -235,7 +235,6 @@ class ModelManagerSP:
     artifact.downloadProgress.status = status
     artifact.downloadProgress.progress = progress
     artifact.downloadProgress.eta = eta
-    artifact.downloadProgress.speed = speed
     self._sync_artifact_progress(artifact)
     self._report_status()
 
@@ -247,7 +246,6 @@ class ModelManagerSP:
     else:
       eta = self._calculate_eta(artifact.fileName, progress)
     self._set_progress(artifact, custom.ModelManagerSP.DownloadStatus.downloading, progress, eta, speed)
-    artifact.downloadProgress.resuming = False  # shown only for the first report, when the bar jumps to the resumed point
 
   async def _report_until_done(self, tasks: list[asyncio.Future], artifact, progress: _Progress, path: str, layout: dict,
                                started: tuple[int, set[int], float]) -> None:
@@ -294,7 +292,6 @@ class ModelManagerSP:
       except BaseException as e:
         cancel.set()
         if isinstance(e, DownloadCancelled):
-          artifact.downloadProgress.canceling = True
           self._set_progress(artifact, custom.ModelManagerSP.DownloadStatus.downloading, artifact.downloadProgress.progress)
         for task in tasks:
           task.cancel()  # drops queued pieces; running ones see the event at their next block
@@ -304,7 +301,6 @@ class ModelManagerSP:
         raise
 
     _remove_download_state(path)
-    artifact.downloadProgress.resuming = False
     del self._download_start_times[artifact.fileName]
 
   async def _download_with_retries(self, url: str, path: str, artifact) -> None:
