@@ -107,7 +107,7 @@ def write_traffic_ui_debug(target, sm) -> None:
 
 
 class TrafficControlRenderer(Widget):
-  """Icon-only traffic signal driven by the already-published final plan."""
+  """Single-lamp traffic signal driven by the already-published final plan."""
 
   def __init__(self, *, compact: bool = False) -> None:
     super().__init__()
@@ -147,11 +147,24 @@ class TrafficControlRenderer(Widget):
     rl.draw_rectangle_rounded_lines_ex(housing, 0.6, 24, (5.0 if highlighted else 2.0) * scale,
                                        CONTROL_OUTLINE if highlighted else BORDER)
 
-    for index, (color, light) in enumerate(zip((RED, AMBER, GREEN), (1, 3, 2), strict=True)):
-      center = rl.Vector2(housing.x + housing.width / 2, housing.y + housing.height * (2 * index + 1) / 6)
-      active = self.state.has_signal and self.state.light_state == light
-      if self.state.has_signal and self.state.flashing and light == 2:
-        active = int(gui_app.frame / max(1, gui_app.target_fps // 2)) % 2 == 0
-      if active:
-        rl.draw_circle_v(center, (TRAFFIC_LIGHT_RADIUS + 6) * scale, rl.Color(color.r, color.g, color.b, 35))
-      rl.draw_circle_v(center, TRAFFIC_LIGHT_RADIUS * scale, color if active else LAMP_OFF)
+    # One physical-style lamp replaces the former vertical red/amber/green stack.
+    # The lamp keeps the same final-plan source and light-state mapping.
+    lamp_color = {
+      1: RED,
+      3: AMBER,
+      2: GREEN,
+    }.get(self.state.light_state)
+    if self.state.flashing and self.state.light_state in (2, 4):
+      # DBC OFF (4) is the dark half of a confirmed flashing-green stop phase.
+      lamp_on = int(gui_app.frame / max(1, gui_app.target_fps // 2)) % 2 == 0
+      lamp_color = GREEN if lamp_on else None
+
+    center = rl.Vector2(housing.x + housing.width / 2, housing.y + housing.height / 2)
+    active = self.state.has_signal and lamp_color is not None
+    radius = TRAFFIC_LIGHT_RADIUS * scale
+    if active:
+      rl.draw_circle_v(center, (TRAFFIC_LIGHT_RADIUS + 7) * scale,
+                       rl.Color(lamp_color.r, lamp_color.g, lamp_color.b, 42))
+      rl.draw_circle_v(center, radius, lamp_color)
+    else:
+      rl.draw_circle_v(center, radius, LAMP_OFF)
