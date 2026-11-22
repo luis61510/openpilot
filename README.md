@@ -14,4 +14,4 @@
 7、增加   Chestnut eGPU 温度与性能监控（显示核心温度、显存温度、占用率、风扇转速）
 8、增加   lead vehicle info TTC显示信息
 9、增加   dragpilot中的opview投屏功能
-10、增加   blendful 功能
+10、增加   blendful 功能，针对模型自动开启和关闭
