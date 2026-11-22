@@ -139,6 +139,7 @@ procs = [
   PythonProcess("dmonitoringmodeld", "openpilot.selfdrive.modeld.dmonitoringmodeld", driver_monitoring, enabled=(WEBCAM or not PC)),
 
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
+  PythonProcess("webrtcd", "openpilot.system.webrtc.webrtcd", or_(notcar, only_onroad)),
   PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run, restart_if_crash=True),
   PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", audio_output),
   PythonProcess("locationd", "openpilot.selfdrive.locationd.locationd", only_onroad),
