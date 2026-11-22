@@ -39,8 +39,9 @@ class LongIndicator(Widget):
       self._alpha_filter.x = 0.0
       return
 
-    # hidden under alerts and set speed
-    visible = self._should_draw and sm['selfdriveState'].alertSize == log.SelfdriveState.AlertSize.none
+    # Keep the longitudinal indicator visible while openpilot is engaged.
+    # Alerts and top HUD icons may overlay it, but do not suppress its visibility.
+    visible = True
     alpha = self._alpha_filter.update(visible)
     self._draw_lead_car(rect, alpha)
     self._draw_distance_bars(rect, alpha, visible)
