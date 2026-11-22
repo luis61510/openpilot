@@ -324,6 +324,12 @@ class ModelsLayout(Widget):
     blendful_allowed = ui_state.model_runner_tinygrad
     self.blendful_toggle.action_item.set_state(ui_state.params.get_bool("Blendful") if blendful_allowed else False)
     self.blendful_toggle.action_item.set_enabled(blendful_allowed)
+
+    blendful_desc = self._blendful_desc if blendful_allowed else \
+      f"<b>{tr('Select a non-Default Tinygrad model to use Blendful.')}</b><br><br>{self._blendful_desc}"
+    if self.blendful_toggle.description != blendful_desc:
+      self.blendful_toggle.set_description(blendful_desc)
+      self.blendful_toggle.show_description(not blendful_allowed)
     self.delay_control.set_visible(not live_delay and advanced_controls)
     new_step = int(round(100 / CV.MPH_TO_KPH)) if ui_state.is_metric else 100
     if self.lane_turn_value_control.action_item is not None and self.lane_turn_value_control.action_item.value_change_step != new_step:
