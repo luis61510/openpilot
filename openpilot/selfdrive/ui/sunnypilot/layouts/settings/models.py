@@ -259,7 +259,6 @@ class ModelsLayout(Widget):
     if selected_ref == "Default":
       if self._selection_source in ACTIVE_BUNDLE_KEYS:
         ui_state.params.remove(ACTIVE_BUNDLE_KEYS[self._selection_source])
-        ui_state.params.put_bool("Blendful", False, block=True)
       return
     if selected_bundle := self._resolve_selected_bundle(selected_ref):
       ui_state.params.put("ModelManager_DownloadRef", selected_bundle.ref)
