@@ -192,7 +192,8 @@ class ModelManagerSP:
     self.source_models: dict[str, list[custom.ModelManagerSP.ModelBundle]] = {}
     self.selected_bundle: custom.ModelManagerSP.ModelBundle = None
     self.active_bundle: custom.ModelManagerSP.ModelBundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
-    self._chunk_size = 128 * 1000  # 128 KB chunks
+    self._block_size = 128 * 1000  # 128 KB network read blocks for regular downloads
+    self._chunk_size = 128 * 1000  # 128 KB chunks for artifact chunk downloads
     self._download_start_times: dict[str, float] = {}  # Track start time per model
     self._download_ref: bytes | str | None = None
 
