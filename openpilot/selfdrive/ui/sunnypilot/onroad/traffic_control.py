@@ -27,7 +27,9 @@ CONTROL_OUTLINE = rl.Color(64, 156, 255, 255)
 
 def traffic_card_rect(rect: rl.Rectangle, compact: bool = False) -> rl.Rectangle:
   if compact:
-    return rl.Rectangle(rect.x + 8, rect.y + 60, 32, 64)
+    # Keep the compact traffic signal above the Mici longitudinal indicator
+    # (lead-car / distance bars are drawn around y=100..152).
+    return rl.Rectangle(rect.x + 8, rect.y + 20, 32, 64)
   return rl.Rectangle(
     rect.x + 46.0,
     rect.y + UI_CONFIG.header_height + TRAFFIC_CARD_TOP_OFFSET,
