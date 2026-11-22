@@ -30,8 +30,11 @@ DOWNLOAD_TIMEOUT = (30, 30)
 # Hugging Face/CDN hosts often perform much better with parallel byte-range requests.
 MAX_CONCURRENT_PIECES = 12
 PIECE_SIZE = 8 * 1024 * 1024
-PIECE_ATTEMPTS = 3
+PIECE_ATTEMPTS = 3  # per piece
 PIECE_BACKOFF = 1.0
+DOWNLOAD_ATTEMPTS = 4
+RETRY_BACKOFF = 2.0
+RETRY_POLL = 0.25
 TRANSIENT_HTTP_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 REPORT_INTERVAL = 0.5
 NO_COMPRESSION = {"Accept-Encoding": "identity"}
@@ -39,19 +42,9 @@ SPEED_SMOOTHING = 0.7
 
 
 def _download_urls(url: str) -> list[str]:
-  """Prefer HF-Mirror for Hugging Face files, then fall back to the original Hub."""
-  try:
-    parsed = urlsplit(url)
-    host = (parsed.hostname or "").lower()
-    if host == "huggingface.co":
-      mirror_url = urlunsplit((parsed.scheme, "hf-mirror.com", parsed.path, parsed.query, parsed.fragment))
-      return [mirror_url, url]
-    if host == "hf-mirror.com":
-      original_url = urlunsplit((parsed.scheme, "huggingface.co", parsed.path, parsed.query, parsed.fragment))
-      return [url, original_url]
-  except ValueError:
-    cloudlog.warning("Unable to parse model download URL; using it unchanged")
+  """Use the model catalog's canonical download URL, matching upstream SunnyPilot."""
   return [url]
+
 
 SPEED_FLOOR = 0.05 * 1024 ** 2
 
@@ -63,26 +56,69 @@ def _is_transient(e: BaseException) -> bool:
 
 
 class _Progress:
-  def __init__(self):
-    self._bytes = 0
+  def __init__(self, done: set[int], done_bytes: int):
+    self._bytes = done_bytes
+    self._done = set(done)
     self._lock = threading.Lock()
 
   def add_bytes(self, n: int) -> None:
     with self._lock:
       self._bytes += n
 
-  def snapshot(self) -> int:
+  def mark_done(self, index: int) -> None:
     with self._lock:
-      return self._bytes
+      self._done.add(index)
+
+  def snapshot(self) -> tuple[int, set[int]]:
+    with self._lock:
+      return self._bytes, set(self._done)
 
 
 def _piece_ranges(total: int, piece_size: int) -> list[tuple[int, int]]:
   return [(start, min(start + piece_size, total)) for start in range(0, total, piece_size)]
 
 
-def _prepare_target(path: str, total: int) -> None:
+def _sidecar_path(path: str) -> str:
+  return f"{path}.download"
+
+
+def _download_in_progress(path: str) -> bool:
+  return os.path.isfile(_sidecar_path(path))
+
+
+def _save_resume_state(path: str, layout: dict, done: set[int]) -> None:
+  tmp = _sidecar_path(path) + ".tmp"
+  with open(tmp, "w") as f:
+    json.dump({**layout, "done": sorted(done)}, f)
+    f.flush()
+    os.fsync(f.fileno())
+  os.replace(tmp, _sidecar_path(path))  # a power loss leaves the old sidecar or the new one, never a torn file
+  dir_fd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
+  try:
+    os.fsync(dir_fd)
+  finally:
+    os.close(dir_fd)
+
+
+def _remove_download_state(path: str) -> None:
+  for stale in (_sidecar_path(path), _sidecar_path(path) + ".tmp"):
+    if os.path.isfile(stale):
+      os.remove(stale)
+
+
+def _prepare_target(path: str, layout: dict) -> set[int]:
+  total = layout["total"]
+  try:
+    with open(_sidecar_path(path)) as f:
+      state = json.load(f)
+    if isinstance(state, dict) and all(state.get(k) == v for k, v in layout.items()) and os.path.getsize(path) == total:
+      return {i for i in state.get("done", []) if isinstance(i, int)}
+  except (OSError, ValueError, TypeError):  # missing, unreadable or malformed sidecar: start over
+    pass
+  _save_resume_state(path, layout, set())
   with open(path, "wb") as f:
     f.truncate(total)
+  return set()
 
 
 def _content_range_total(response: requests.Response) -> int | None:
@@ -117,24 +153,24 @@ def _fetch_piece(url: str, path: str, index: int, start: int, end: int | None, p
           for block in response.iter_content(chunk_size=block_size):
             if cancel.is_set():
               raise DownloadCancelled("Download cancelled")
-            if not block:
-              continue
             f.write(block)
             written += len(block)
             progress.add_bytes(len(block))
           if end is None:
-            f.truncate()
+            f.truncate()  # unknown length: the body defines the file size
           if end is not None and written != end - start:
             raise requests.exceptions.ConnectionError(f"short read: {written} of {end - start} bytes")
+          f.flush()
+          os.fsync(f.fileno())  # before it is recorded, so a power loss never leaves the sidecar naming unsynced bytes
+      progress.mark_done(index)
       return
     except requests.RequestException as e:
-      progress.add_bytes(-written)
+      progress.add_bytes(-written)  # the piece restarts from scratch
       if not _is_transient(e) or attempt == PIECE_ATTEMPTS - 1:
         raise
       cloudlog.warning(f"retrying {label} after {type(e).__name__}: {e}")
       if cancel.wait(PIECE_BACKOFF * (1 + attempt)):
         raise DownloadCancelled("Download cancelled") from None
-
 
 
 
@@ -195,60 +231,99 @@ class ModelManagerSP:
 
     return max(1, int(eta))  # Return at least 1 second if download is ongoing
 
-  def _publish_download_progress(self, artifact, done_bytes: int, total: int, speed: float) -> None:
-    progress = min(99.0, done_bytes / total * 100) if total > 0 else 0.0
-    eta = max(1, int((total - done_bytes) / speed)) if speed > 0 and total > 0 else self._calculate_eta(artifact.fileName, progress)
-    artifact.downloadProgress.status = custom.ModelManagerSP.DownloadStatus.downloading
+  def _set_progress(self, artifact, status, progress: float, eta: int = 0, speed: float = 0.0) -> None:
+    artifact.downloadProgress.status = status
     artifact.downloadProgress.progress = progress
     artifact.downloadProgress.eta = eta
+    artifact.downloadProgress.speed = speed
     self._sync_artifact_progress(artifact)
     self._report_status()
 
-  async def _report_download_until_done(self, tasks, artifact, progress: _Progress, total: int) -> None:
+  def _publish_progress(self, artifact, done_bytes: int, total: int, speed: float) -> None:
+    # held at 99 until the file passes its hash check
+    progress = min(99.0, done_bytes / total * 100) if total > 0 else 0.0
+    if speed > 0 and total > 0:
+      eta = max(1, int((total - done_bytes) / speed))
+    else:
+      eta = self._calculate_eta(artifact.fileName, progress)
+    self._set_progress(artifact, custom.ModelManagerSP.DownloadStatus.downloading, progress, eta, speed)
+    artifact.downloadProgress.resuming = False  # shown only for the first report, when the bar jumps to the resumed point
+
+  async def _report_until_done(self, tasks: list[asyncio.Future], artifact, progress: _Progress, path: str, layout: dict,
+                               started: tuple[int, set[int], float]) -> None:
     pending = set(tasks)
-    last_bytes, last_time = progress.snapshot(), time.monotonic()
+    last_bytes, saved, last_time = started
     speed = 0.0
     while pending:
       done, pending = await asyncio.wait(pending, timeout=REPORT_INTERVAL)
       for task in done:
-        task.result()
+        task.result()  # re-raises a worker failure
       if self._download_interrupted():
         raise DownloadCancelled("Download cancelled")
       now = time.monotonic()
-      done_bytes = progress.snapshot()
+      done_bytes, done_pieces = progress.snapshot()
+      if done_pieces != saved:
+        _save_resume_state(path, layout, done_pieces)
+        saved = done_pieces
       if (dt := now - last_time) > 0:
-        instant = max(0.0, (done_bytes - last_bytes) / dt)
+        instant = max(0.0, (done_bytes - last_bytes) / dt)  # bytes/s this tick; clamped since retried pieces can lower the byte count
         speed = instant if speed == 0 else SPEED_SMOOTHING * speed + (1 - SPEED_SMOOTHING) * instant
-        if speed < SPEED_FLOOR:
+        if speed < SPEED_FLOOR:  # a stall decays toward 0 without reaching it, and a near-0 speed overflows the eta
           speed = 0.0
       last_time, last_bytes = now, done_bytes
-      self._publish_download_progress(artifact, done_bytes, total, speed)
+      self._publish_progress(artifact, done_bytes, layout["total"], speed)
 
   async def _download_file(self, url: str, path: str, artifact) -> None:
-    """Download with resumable-retry behavior and parallel byte ranges when supported."""
     self._download_start_times[artifact.fileName] = time.monotonic()
     loop = asyncio.get_running_loop()
 
     total, ranged = await loop.run_in_executor(None, _probe_size, url)
-    pieces = _piece_ranges(total, PIECE_SIZE) if ranged else [(0, None)]
-    await loop.run_in_executor(None, _prepare_target, path, total)
-    progress = _Progress()
+    pieces: list[tuple[int, int | None]] = list(_piece_ranges(total, PIECE_SIZE)) if ranged else [(0, None)]
+    layout = {"total": total, "piece_size": PIECE_SIZE, "ranged": ranged, "sha256": artifact.downloadUri.sha256}
+    done = await loop.run_in_executor(None, _prepare_target, path, layout)
+    resumed_bytes = sum(end - start for i, (start, end) in enumerate(pieces) if i in done and end is not None)
+    progress = _Progress(done, resumed_bytes)  # the bar and eta start from the resumed pieces
     cancel = threading.Event()
+    started = *progress.snapshot(), time.monotonic()  # before any worker can land bytes
 
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_PIECES) as pool:
-      tasks = [loop.run_in_executor(pool, _fetch_piece, url, path, i, start, end, progress, cancel, 128 * 1000)
-               for i, (start, end) in enumerate(pieces)]
+      tasks = [loop.run_in_executor(pool, _fetch_piece, url, path, i, start, end, progress, cancel, self._block_size)
+               for i, (start, end) in enumerate(pieces) if i not in done]
       try:
-        await self._report_download_until_done(tasks, artifact, progress, total)
+        await self._report_until_done(tasks, artifact, progress, path, layout, started)
       except BaseException as e:
         cancel.set()
-        for task in tasks:
-          task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
         if isinstance(e, DownloadCancelled):
-          raise
+          artifact.downloadProgress.canceling = True
+          self._set_progress(artifact, custom.ModelManagerSP.DownloadStatus.downloading, artifact.downloadProgress.progress)
+        for task in tasks:
+          task.cancel()  # drops queued pieces; running ones see the event at their next block
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await loop.run_in_executor(None, pool.shutdown)  # let running pieces stop so none lands after the save
+        _save_resume_state(path, layout, progress.snapshot()[1])
         raise
+
+    _remove_download_state(path)
+    artifact.downloadProgress.resuming = False
     del self._download_start_times[artifact.fileName]
+
+  async def _download_with_retries(self, url: str, path: str, artifact) -> None:
+    for attempt in range(DOWNLOAD_ATTEMPTS):
+      try:
+        await self._download_file(url, path, artifact)
+        return
+      except Exception as e:
+        if not _is_transient(e) or attempt == DOWNLOAD_ATTEMPTS - 1:
+          raise
+        delay = RETRY_BACKOFF * 2 ** attempt
+        cloudlog.warning(f"Retrying {artifact.fileName} in {delay:g}s after {type(e).__name__}: {e}")
+        progress = artifact.downloadProgress
+        self._set_progress(artifact, progress.status, progress.progress, progress.eta, 0.0)  # stalled: no speed
+        deadline = time.monotonic() + delay
+        while (remaining := deadline - time.monotonic()) > 0:
+          if self._download_interrupted():
+            raise DownloadCancelled("Download cancelled") from e
+          await asyncio.sleep(min(RETRY_POLL, remaining))
 
   async def _download_chunked(self, base_url: str, base_path: str, artifact, skip: frozenset[int] | set[int] = frozenset()) -> None:
     from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
@@ -352,10 +427,11 @@ class ModelManagerSP:
               if not await verify_file(chunk_path, chunk.sha256):
                 raise ValueError(f"Hash validation failed for chunk {i+1} of {filename}")
           else:
-            if os.path.isfile(full_path):
-              os.remove(full_path)
-            await self._download_file(download_url, full_path, artifact)
+            await self._download_with_retries(download_url, full_path, artifact)
+            self._set_progress(artifact, custom.ModelManagerSP.DownloadStatus.verifying, 99)
             if not await verify_file(full_path, expected_hash):
+              _remove_file(full_path)
+              _remove_download_state(full_path)
               raise ValueError(f"Hash validation failed for {filename}")
           break
         except DownloadCancelled:
