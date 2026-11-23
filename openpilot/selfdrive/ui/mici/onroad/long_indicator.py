@@ -51,29 +51,32 @@ class LongIndicator(Widget):
     # Compact six-step distance graphic. The Tesla follow-distance CAN source
     # still needs vehicle-log verification before any bar is allowed to claim
     # an actual selected setting.
+    # Slightly enlarge the six-step graphic while keeping its center aligned
+    # with the lead-car icon. Bars remain read-only UI; CAN decoding is handled
+    # by the vehicle state path, not by this renderer.
     center_x = rect.x + 24
-    top_y = rect.y + 122
-    row_gap = 7.5
-    bar_widths = (9.0, 12.5, 16.0, 19.5, 23.0, 26.5)
+    top_y = rect.y + 119
+    row_gap = 8.5
+    bar_widths = (11.0, 15.0, 19.0, 23.0, 27.0, 31.0)
 
-    rail_top = top_y - 4.0
-    rail_bottom = top_y + row_gap * 5 + 4.0
-    rail_half_top = 7.0
-    rail_half_bottom = 15.0
+    rail_top = top_y - 4.5
+    rail_bottom = top_y + row_gap * 5 + 4.5
+    rail_half_top = 8.0
+    rail_half_bottom = 17.5
     rail_color = rl.Color(35, 220, 105, round(220 * alpha))
     bar_color = rl.Color(105, 112, 112, round(150 * alpha))
 
     # Two continuous tapered side rails. Keep a visible gap between rails
-    # and every rung; rungs are slightly thicker than the rails.
+    # and every rung; thicker rungs improve legibility at a glance.
     for side in (-1.0, 1.0):
       start_x = center_x + side * rail_half_top
       end_x = center_x + side * rail_half_bottom
-      rl.draw_line_ex(rl.Vector2(start_x, rail_top), rl.Vector2(end_x, rail_bottom), 1.8, rail_color)
+      rl.draw_line_ex(rl.Vector2(start_x, rail_top), rl.Vector2(end_x, rail_bottom), 2.4, rail_color)
 
     for i, width in enumerate(bar_widths):
       y = top_y + i * row_gap
       half_width = width / 2.0
-      rl.draw_line_ex(rl.Vector2(center_x - half_width, y), rl.Vector2(center_x + half_width, y), 3.2, bar_color)
+      rl.draw_line_ex(rl.Vector2(center_x - half_width, y), rl.Vector2(center_x + half_width, y), 4.6, bar_color)
 
   @staticmethod
   def _draw_centered(texture: rl.Texture, rect: rl.Rectangle, y: float, alpha: float) -> None:
