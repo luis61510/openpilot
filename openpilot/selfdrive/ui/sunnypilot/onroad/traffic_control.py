@@ -27,9 +27,9 @@ CONTROL_OUTLINE = rl.Color(64, 156, 255, 255)
 
 def traffic_card_rect(rect: rl.Rectangle, compact: bool = False) -> rl.Rectangle:
   if compact:
-    # Keep the compact traffic signal above the Mici longitudinal indicator
-    # (lead-car / distance bars are drawn around y=100..152).
-    return rl.Rectangle(rect.x + 8, rect.y + 20, 32, 64)
+    # Anchor the compact lamp at the upper-right edge of the Mici HUD.
+    # This keeps it clear of the longitudinal status indicator on the left.
+    return rl.Rectangle(rect.x + rect.width - 44, rect.y + 8, 32, 64)
   return rl.Rectangle(
     rect.x + 46.0,
     rect.y + UI_CONFIG.header_height + TRAFFIC_CARD_TOP_OFFSET,
@@ -53,6 +53,28 @@ class TrafficSignalDisplayState:
   light_state: int = 0
   phase: int = int(TrafficControlPhase.off)
   flashing: bool = False
+
+  @classmethod
+  def from_raw_observation(cls, target, *, valid: bool = True) -> TrafficSignalDisplayState:
+    """Display fresh Tesla traffic-light recognition without requesting control."""
+    if not valid or not bool(target.available):
+      return cls()
+    light = int(target.lightState)
+    distance = float(target.distance)
+    has_signal = bool(
+      int(target.quality) > 0
+      and 0.0 <= distance <= 200.0
+      and light in (1, 2, 3)
+    )
+    return cls(
+      visible=has_signal,
+      has_signal=has_signal,
+      control_active=False,
+      driver_override_active=False,
+      light_state=light,
+      phase=int(TrafficControlPhase.off),
+      flashing=False,
+    )
 
   @classmethod
   def from_plan(cls, target, *, valid: bool = True) -> TrafficSignalDisplayState:
@@ -117,18 +139,27 @@ class TrafficControlRenderer(Widget):
   def update(self) -> None:
     global _latest_traffic_display_frame, _latest_traffic_display_state
     sm = ui_state.sm
-    if not sm.alive["longitudinalPlanSP"] or not sm.valid["longitudinalPlanSP"]:
+    engaged = bool(sm.seen["selfdriveState"] and sm.alive["selfdriveState"] and
+                    sm.valid["selfdriveState"] and sm["selfdriveState"].enabled)
+
+    if self.compact and not engaged:
+      # Mici remains a recognition-only display while OP is disengaged.
+      # Read the already-published carStateSP observation; never enable
+      # traffic-control actions or read CAN directly from the UI.
+      raw_valid = bool(sm.seen["carStateSP"] and sm.alive["carStateSP"] and
+                       sm.valid["carStateSP"])
+      self.state = TrafficSignalDisplayState.from_raw_observation(
+        sm["carStateSP"].teslaTrafficControl,
+        valid=raw_valid,
+      )
+    elif not sm.alive["longitudinalPlanSP"] or not sm.valid["longitudinalPlanSP"]:
       self.state = TrafficSignalDisplayState()
-      _latest_traffic_display_state = self.state
-      _latest_traffic_display_frame = gui_app.frame
-      return
-    # updated is a one-poll pulse, not an acknowledgement by this renderer.
-    # A skipped HUD frame must not leave an older lamp/control outline cached
-    # after a newer healthy plan has already arrived.
-    self.state = TrafficSignalDisplayState.from_plan(
-      sm["longitudinalPlanSP"].teslaTrafficControl,
-      valid=bool(sm.valid["longitudinalPlanSP"]),
-    )
+    else:
+      # While OP is engaged, preserve the existing final-plan display logic.
+      self.state = TrafficSignalDisplayState.from_plan(
+        sm["longitudinalPlanSP"].teslaTrafficControl,
+        valid=bool(sm.valid["longitudinalPlanSP"]),
+      )
     _latest_traffic_display_state = self.state
     _latest_traffic_display_frame = gui_app.frame
 
