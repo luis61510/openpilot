@@ -10,7 +10,7 @@
 3、修复默认大模型 ref
 4、增加   Longitudinal Indicator（纵向控制状态指示器）
 5、移植了 新版 load_model()  
-6、移植 Blendful功能
+6、移植 Blendful功能,同步master分支
 7、增加   Chestnut eGPU 温度与性能监控（显示核心温度、显存温度、占用率、风扇转速）
 8、增加   lead vehicle info TTC显示信息，仅显示前车距离参数。
 9、增加   dragpilot中的opview投屏功能。
