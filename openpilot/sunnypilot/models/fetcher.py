@@ -7,11 +7,11 @@ See the LICENSE.md file in the root directory for more details.
 
 import time
 import os
+import re
 import requests
 from requests.exceptions import (SSLError, RequestException)
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
-from openpilot.common.hardware.hw import Paths
 from openpilot.sunnypilot.models.helpers import is_bundle_version_compatible
 from openpilot.cereal import custom
 
@@ -40,20 +40,9 @@ class ModelParser:
     artifact.downloadUri = ModelParser._parse_download_uri(artifact_data.get("download_uri", {}))
 
     if "chunks" in artifact_data:
+      # Parsing a catalog must be side-effect free. The manifest is written only
+      # after the corresponding payload chunks have been downloaded and verified.
       artifact.chunks = [ModelParser._parse_chunk(chunk_data) for chunk_data in artifact_data["chunks"]]
-
-      try:
-        model_dir = Paths.model_root()
-        os.makedirs(model_dir, exist_ok=True)
-        manifest_path = os.path.join(model_dir, f"{artifact.fileName}.chunkmanifest")
-        num_chunks = str(len(artifact.chunks))
-
-        if not os.path.exists(manifest_path) or open(manifest_path).read().strip() != num_chunks:
-          with open(manifest_path, "w") as f:
-            f.write(num_chunks)
-          cloudlog.info(f"Wrote chunk manifest for {artifact.fileName}: {num_chunks} chunks")
-      except Exception as e:
-        cloudlog.warning(f"Failed to write chunk manifest for {artifact.fileName}: {e}")
 
     return artifact
 
@@ -84,6 +73,14 @@ class ModelParser:
     model_bundle.internalName = bundle["short_name"]
     model_bundle.displayName = bundle["display_name"]
     model_bundle.models = [ModelParser._parse_model(model) for model in bundle.get("models",[])]
+    # Give every bundle a private artifact namespace. Chunk payloads and manifests
+    # otherwise share names when different bundles publish the same file_name.
+    ref_key = re.sub(r"[^A-Za-z0-9_-]", "_", str(bundle.get("ref") or bundle["short_name"]))[:12]
+    bundle_key = f"{model_bundle.index}_{ref_key}"
+    for model in model_bundle.models:
+      for artifact in (model.metadata, model.artifact):
+        if artifact is not None and artifact.fileName:
+          artifact.fileName = f"bundle_{bundle_key}_{os.path.basename(artifact.fileName)}"
     model_bundle.status = 0
     model_bundle.generation = int(bundle["generation"])
     model_bundle.environment = bundle["environment"]
