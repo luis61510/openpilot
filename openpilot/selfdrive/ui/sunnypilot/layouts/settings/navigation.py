@@ -6,11 +6,33 @@ See the LICENSE.md file in the root directory for more details.
 """
 import socket
 
+import pyray as rl
+
 from openpilot.common.params import Params
+from openpilot.system.ui.lib.application import FontWeight, TextAlignment, TextAlignmentVertical
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.widgets.list_view import text_item
+from openpilot.system.ui.widgets.label import gui_label
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller_tici import LineSeparator, Scroller
+
+
+class CompactParamItem(Widget):
+  """Two-line, compact parameter row for small Comma displays."""
+  def __init__(self, title, value):
+    super().__init__()
+    self._title = title
+    self._value = value
+    self.set_rect(rl.Rectangle(0, 0, 600, 116))
+
+  def _render(self, _rect):
+    title_rect = rl.Rectangle(self._rect.x + 20, self._rect.y + 8, self._rect.width - 40, 38)
+    value_rect = rl.Rectangle(self._rect.x + 20, self._rect.y + 48, self._rect.width - 40, 60)
+    gui_label(title_rect, self._title(), font_size=26, color=rl.Color(170, 170, 170, 255),
+              font_weight=FontWeight.NORMAL, alignment=TextAlignment.LEFT,
+              alignment_vertical=TextAlignmentVertical.MIDDLE)
+    gui_label(value_rect, self._value(), font_size=32, color=rl.WHITE,
+              font_weight=FontWeight.NORMAL, alignment=TextAlignment.LEFT,
+              alignment_vertical=TextAlignmentVertical.MIDDLE)
 
 
 class NavigationLayout(Widget):
@@ -18,9 +40,9 @@ class NavigationLayout(Widget):
     super().__init__()
     self._params = Params()
     items = [
-      text_item(lambda: tr("Phone setup address"), self._get_address),
+      CompactParamItem(lambda: tr("Phone setup address"), self._get_address),
       LineSeparator(),
-      text_item(lambda: tr("Pairing code"), self._get_pairing_code),
+      CompactParamItem(lambda: tr("Pairing code"), self._get_pairing_code),
       LineSeparator(),
       text_item(lambda: tr("How to use"), lambda: tr("Connect your phone to the same Wi-Fi, open the address above, enter the pairing code, then search or select a destination.")),
     ]
