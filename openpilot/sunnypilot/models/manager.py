@@ -43,8 +43,14 @@ SPEED_SMOOTHING = 0.7
 
 
 def _download_urls(url: str) -> list[str]:
-  """Use the model catalog's canonical download URL, matching upstream SunnyPilot."""
-  return [url]
+  """Try the canonical Hugging Face URL first, then its hf-mirror.com equivalent."""
+  urls = [url]
+  parsed = urlsplit(url)
+  if parsed.scheme == "https" and parsed.hostname == "huggingface.co":
+    mirror_url = parsed._replace(netloc="hf-mirror.com").geturl()
+    if mirror_url != url:
+      urls.append(mirror_url)
+  return urls
 
 
 SPEED_FLOOR = 0.05 * 1024 ** 2
