@@ -7,7 +7,6 @@ See the LICENSE.md file in the root directory for more details.
 import numpy as np
 
 import pyray as rl
-from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
