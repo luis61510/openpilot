@@ -8,7 +8,7 @@ import socket
 
 from openpilot.common.params import Params
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.sunnypilot.widgets.list_view import text_item
+from openpilot.system.ui.widgets.list_view import text_item
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller_tici import LineSeparator, Scroller
 
