@@ -46,6 +46,7 @@ class UIStateSP:
 
     self.active_bundle = None
     self.model_runner_tinygrad: bool = False
+    self.active_runner_tinygrad: bool = False
     self.blindspot: bool = False
     self.chevron_metrics = None
     self.custom_interactive_timeout: int = 0
@@ -157,6 +158,8 @@ class UIStateSP:
                                chestnut_loading=self.chestnut_loading, offroad=self.is_offroad())
     self.active_bundle = self.params.get(ACTIVE_BUNDLE_KEYS[source])
     self.model_runner_tinygrad = self.active_bundle is not None and self.active_bundle.get("runner") == "tinygrad"
+    # Match the runner actually launched by process_config, including active Chestnut models.
+    self.active_runner_tinygrad = self.params.get("ModelRunnerTypeCache") == custom.ModelManagerSP.Runner.tinygrad
     self.blindspot = self.params.get_bool("BlindSpot")
     self.chevron_metrics = self.params.get("ChevronInfo")
     self.custom_interactive_timeout = self.params.get("InteractivityTimeout", return_default=True)
