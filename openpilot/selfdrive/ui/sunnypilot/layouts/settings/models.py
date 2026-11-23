@@ -321,12 +321,16 @@ class ModelsLayout(Widget):
     self.lane_turn_desire_toggle.action_item.set_state(turn_desire)
     self.lane_turn_value_control.set_visible(turn_desire and advanced_controls)
     self.lagd_toggle.action_item.set_state(live_delay)
-    blendful_allowed = ui_state.model_runner_tinygrad
-    self.blendful_toggle.action_item.set_state(ui_state.params.get_bool("Blendful") if blendful_allowed else False)
-    self.blendful_toggle.action_item.set_enabled(blendful_allowed)
+    blendful_allowed = ui_state.active_runner_tinygrad
+    if blendful_allowed:
+      self.blendful_toggle.action_item.set_state(ui_state.params.get_bool("Blendful"))
+      self.blendful_toggle.action_item.set_enabled(True)
+    else:
+      self.blendful_toggle.action_item.set_state(False)
+      self.blendful_toggle.action_item.set_enabled(False)
 
     blendful_desc = self._blendful_desc if blendful_allowed else \
-      f"<b>{tr('Select a non-Default Tinygrad model to use Blendful.')}</b><br><br>{self._blendful_desc}"
+      f"<b>{tr('Select a non-Default model to use Blendful.')}</b><br><br>{self._blendful_desc}"
     if self.blendful_toggle.description != blendful_desc:
       self.blendful_toggle.set_description(blendful_desc)
       self.blendful_toggle.show_description(not blendful_allowed)
