@@ -27,9 +27,9 @@ CONTROL_OUTLINE = rl.Color(64, 156, 255, 255)
 
 def traffic_card_rect(rect: rl.Rectangle, compact: bool = False) -> rl.Rectangle:
   if compact:
-    # Anchor the compact lamp at the upper-right edge of the Mici HUD.
-    # This keeps it clear of the longitudinal status indicator on the left.
-    return rl.Rectangle(rect.x + rect.width - 44, rect.y + 8, 32, 64)
+    # Anchor the compact lamp at the upper-left of the Mici HUD.
+    # Keep clear of the driver-state icon and the longitudinal indicator below.
+    return rl.Rectangle(rect.x + 84, rect.y + 8, 32, 64)
   return rl.Rectangle(
     rect.x + 46.0,
     rect.y + UI_CONFIG.header_height + TRAFFIC_CARD_TOP_OFFSET,
