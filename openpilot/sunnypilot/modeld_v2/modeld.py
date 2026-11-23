@@ -16,6 +16,8 @@ from setproctitle import setproctitle
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
 from openpilot.selfdrive.modeld.helpers import chestnut_present, modeld_pkl_path
+from openpilot.common.hardware.usb import cable_connected
+from tinygrad.device import Device
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -68,6 +70,15 @@ def _find_driving_pkl(bundle):
   if _pkl_exists(pkl_path):
     return pkl_path
   return None
+
+
+def _wait_for_chestnut(timeout: float = 10.0) -> None:
+  # USB cable detection can happen before the Chestnut device finishes enumerating.
+  start_time = time.monotonic()
+  while not chestnut_present():
+    if time.monotonic() - start_time > timeout:
+      raise TimeoutError("chestnut did not enumerate")
+    time.sleep(0.1)
 
 
 class FrameMeta:
@@ -195,6 +206,8 @@ class ModelState(ModelStateBase):
       self.numpy_inputs['big_tfm'][:, :] = transforms[self._wide_key].reshape(3, 3)
 
     raw_outputs = self.adapter.run()
+    if self.chestnut and (err := Device[self.DEV].error_state.host.view(fmt='q')[0]):
+      raise RuntimeError(f"chestnut failed with {err}")
 
     if after_enqueue is not None:
       after_enqueue()
@@ -271,7 +284,8 @@ def main(demo=False):
   setproctitle(PROCESS_NAME)
   config_realtime_process(7, 54)
 
-  CHESTNUT = chestnut_present()
+  CHESTNUT = (_find_driving_pkl(get_active_bundle(chestnut=True)) is not None
+              and (chestnut_present() or cable_connected()))
   if CHESTNUT:
     os.environ['HCQDEV_WAIT_TIMEOUT_MS'] = '3000'
 
@@ -311,6 +325,7 @@ def main(demo=False):
     def load_big():
       nonlocal big_model
       try:
+        _wait_for_chestnut()
         m = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
         m.warmup()
         big_model = m
@@ -460,7 +475,7 @@ def main(demo=False):
                        run_count % round(model.constants.MODEL_FREQ / SERVICE_LIST['chestnutGpuState'].frequency) == 0)
       model_output = model.run(bufs, transforms, inputs, chestnut_state.send if send_chestnut else None)
     except Exception:
-      if not params.get_bool("ChestnutActive"):
+      if not model.chestnut:
         raise
       cloudlog.exception("big model failed, fall back to small")
       params.put_bool("ChestnutActive", False)
