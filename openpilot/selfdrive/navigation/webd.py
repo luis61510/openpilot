@@ -168,9 +168,14 @@ class NavigationRequestHandler(BaseHTTPRequestHandler):
     host = self.headers.get("Host", "").split(":", 1)[0].strip("[]")
     if host not in ("localhost", "127.0.0.1") and not _private_peer(host):
       return self._json(403, {"error": "只允许通过局域网 IP 访问"})
-    if self.path != "/":
-      return self._json(404, {"error": "not found"})
-    self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+    if self.path == "/":
+      return self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+    if self.path == "/api/status":
+      if not self._authorized():
+        return self._json(401, {"error": "配对码错误或未配对"})
+      destination = Params().get("NavDestination")
+      return self._json(200, {"destination": destination})
+    return self._json(404, {"error": "not found"})
 
   def do_POST(self):
     if not _private_peer(self.client_address[0]):
