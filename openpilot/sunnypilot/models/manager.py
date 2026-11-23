@@ -408,7 +408,7 @@ class ModelManagerSP:
       is_cached = False
       valid_chunks: set[int] = set()
       if len(artifact.chunks) > 0:
-        from openpilot.common.file_chunker import get_chunk_name
+        from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
         num_chunks = len(artifact.chunks)
         for i, chunk in enumerate(artifact.chunks):
           if self._download_interrupted():
@@ -422,7 +422,8 @@ class ModelManagerSP:
         manifest_path = get_manifest_path(full_path)
         manifest_valid = False
         try:
-          manifest_valid = int(open(manifest_path).read().strip()) == num_chunks
+          with open(manifest_path) as manifest:
+            manifest_valid = int(manifest.read().strip()) == num_chunks
         except (OSError, ValueError):
           pass
         chunks_complete = len(valid_chunks) == num_chunks
@@ -447,7 +448,7 @@ class ModelManagerSP:
       for attempt, download_url in enumerate(download_urls):
         try:
           if len(artifact.chunks) > 0:
-            from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+            from openpilot.common.file_chunker import get_chunk_name
             # Keep verified chunks, but never mix partial data from different hosts.
             for i in range(len(artifact.chunks)):
               if i not in valid_chunks:
