@@ -142,6 +142,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"ChestnutRetry", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},
     {"NavDestination", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     {"NavigationEnabled", {PERSISTENT, BOOL, "0"}},
+    {"NavigationWebToken", {PERSISTENT | DONT_LOG, STRING}},
     {"Version", {PERSISTENT, STRING}},
 
     {"DriverMonitoringEnabled", {PERSISTENT | BACKUP, BOOL, "1"}},
