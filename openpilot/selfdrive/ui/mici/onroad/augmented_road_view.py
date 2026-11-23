@@ -41,6 +41,64 @@ ROAD_CAM_MIN_SPEED = 10  # m/s (25 mph)
 CAM_Y_OFFSET = 20
 
 
+class AccDistanceIndicator(Widget):
+  """Tesla ACC follow-distance indicator, shown only while openpilot is engaged."""
+
+  BAR_LENGTHS = (26, 34, 42, 50, 58, 66)
+  BAR_SPACING = 19
+  BAR_THICKNESS = 8
+
+  def __init__(self):
+    super().__init__()
+    self._car_green = gui_app.texture("icons_mici/longitudinal/car_green.png", 44, 28)
+    self._bar_filters = [FirstOrderFilter(0.0, 0.06, 1 / gui_app.target_fps) for _ in range(6)]
+
+  def render(self, rect: rl.Rectangle):
+    sm = ui_state.sm
+    if not ui_state.started or not sm["selfdriveState"].enabled:
+      for fade in self._bar_filters:
+        fade.update(0.0)
+      return
+
+    distance_valid = (sm.seen["carStateSP"] and sm.alive["carStateSP"] and sm.valid["carStateSP"] and
+                      bool(sm["carStateSP"].teslaAccDistanceValid))
+    level = int(sm["carStateSP"].teslaAccDistanceLevel) if distance_valid else 0
+    lit_count = 8 - level if 2 <= level <= 7 else 0
+
+    center_x = rect.x + 60
+    center_y = rect.y + rect.height / 2
+    car_x = center_x - self._car_green.width / 2
+    car_y = center_y - 76
+    rl.draw_texture_ex(self._car_green, rl.Vector2(car_x, car_y), 0.0, 1.0, rl.WHITE)
+
+    first_y = center_y - 25
+    last_y = first_y + self.BAR_SPACING * 5
+
+    # Independent diagonal rails. They deliberately remain separated from every bar.
+    rail_top_y = first_y - 6
+    rail_bottom_y = last_y + 7
+    rail_color = rl.Color(125, 132, 140, 190)
+    rl.draw_line_ex(rl.Vector2(center_x - 24, rail_top_y),
+                    rl.Vector2(center_x - 48, rail_bottom_y), 3.5, rail_color)
+    rl.draw_line_ex(rl.Vector2(center_x + 24, rail_top_y),
+                    rl.Vector2(center_x + 48, rail_bottom_y), 3.5, rail_color)
+
+    for index, length in enumerate(self.BAR_LENGTHS):
+      y = first_y + index * self.BAR_SPACING
+      lit = distance_valid and index >= 6 - lit_count
+      alpha = self._bar_filters[index].update(1.0 if lit else 0.0)
+      half_length = length / 2
+      start = rl.Vector2(center_x - half_length, y)
+      end = rl.Vector2(center_x + half_length, y)
+
+      inactive_alpha = int(115 * (1.0 - alpha))
+      if inactive_alpha > 0:
+        rl.draw_line_ex(start, end, self.BAR_THICKNESS, rl.Color(115, 124, 134, inactive_alpha))
+      active_alpha = int(255 * alpha)
+      if active_alpha > 0:
+        rl.draw_line_ex(start, end, self.BAR_THICKNESS, rl.Color(35, 214, 111, active_alpha))
+
+
 class BookmarkIcon(Widget):
   PEEK_THRESHOLD = 50  # If icon peeks out this much, snap it fully visible
   FULL_VISIBLE_OFFSET = 200  # How far onscreen when fully visible
@@ -155,6 +213,7 @@ class AugmentedRoadView(CameraView):
     self._hud_renderer = HudRenderer()
     self._alert_renderer = AlertRenderer()
     self._driver_state_renderer = DriverStateRenderer()
+    self._acc_distance_indicator = AccDistanceIndicator()
     self._confidence_ball = ConfidenceBall()
     self._offroad_label = UnifiedLabel("start the car to\nuse sunnypilot", 54, FontWeight.DISPLAY,
                                        text_color=rl.Color(255, 255, 255, int(255 * 0.9)),
@@ -229,6 +288,7 @@ class AugmentedRoadView(CameraView):
     self._driver_state_renderer.set_should_draw(should_draw_dmoji)
     self._driver_state_renderer.set_position(self._rect.x + 16, self._rect.y + 10)
     self._driver_state_renderer.render()
+    self._acc_distance_indicator.render(self._content_rect)
 
     self._hud_renderer.set_can_draw_top_icons(alert_to_render is None)
     self._hud_renderer.set_wheel_critical_icon(alert_to_render is not None and not not_animating_out and
