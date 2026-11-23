@@ -476,6 +476,8 @@ struct CarStateSP @0xb86e6369214c01c8 {
   # Retired visualization field; retain ordinal/type for recorded-log compatibility.
   teslaRoadContext @2 :TeslaRoadContext;
   teslaTrafficControl @3 :TeslaTrafficControl;
+  teslaAccDistanceLevel @4 :UInt8;  # Tesla ACC follow-distance level, 2-7.
+  teslaAccDistanceValid @5 :Bool;  # True only while DTR_Dist_Rq is fresh and recognized.
 }
 
 struct TeslaRoadContext {
