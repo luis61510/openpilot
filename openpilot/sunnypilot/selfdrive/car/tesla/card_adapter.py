@@ -19,6 +19,10 @@ from openpilot.sunnypilot.selfdrive.traffic_control.tesla_observer import (
 
 CONTEXT_STALE_S = 0.2
 LIGHTING_STALE_NS = 2_000_000_000
+DISTANCE_MESSAGE = "STW_ACTN_RQ"
+DISTANCE_SIGNAL = "DTR_Dist_Rq"
+DISTANCE_STALE_NS = 1_000_000_000
+DISTANCE_LEVELS = {33: 2, 66: 3, 100: 4, 133: 5, 166: 6, 200: 7}
 LIGHTING_MESSAGE = "ID3F5VCFRONT_lighting"
 DISPLAY_MESSAGE = "UI_status2"
 CONTEXT_SERVICES = ("selfdriveStateSP",)
@@ -70,6 +74,9 @@ class TeslaCardAdapter:
     self.sm = submaster
     self.traffic_control_observer = TeslaTrafficControlObserver() if self.enabled else None
     self.lighting_parser = self._create_lighting_parser() if self.enabled else None
+    self.distance_parser = self._create_distance_parser() if self.enabled else None
+    self._distance_level = 0
+    self._distance_valid = False
     self.speed_limit_assist_configured: bool | None = None
     self.ambient = AmbientLightingController() if self.enabled else None
 
@@ -87,6 +94,35 @@ class TeslaCardAdapter:
       return CANParser(DBC[fingerprint][Bus.adas], [(LIGHTING_MESSAGE, float("nan")), (DISPLAY_MESSAGE, float("nan"))], CANBUS.vehicle)
     except (AttributeError, KeyError):
       return None
+
+  def _create_distance_parser(self):
+    try:
+      from opendbc.can import CANParser
+      from opendbc.car import Bus
+      from opendbc.car.tesla.values import CANBUS, DBC
+
+      fingerprint = self.car_interface.CP.carFingerprint
+      return CANParser(DBC[fingerprint][Bus.adas], [(DISTANCE_MESSAGE, float("nan"))], CANBUS.vehicle)
+    except (AttributeError, KeyError, ValueError):
+      return None
+
+  def _update_distance_state(self, now_nanos: int) -> None:
+    self._distance_level = 0
+    self._distance_valid = False
+    if self.distance_parser is None:
+      return
+
+    timestamps = self.distance_parser.ts_nanos.get(DISTANCE_MESSAGE, {})
+    timestamp = timestamps.get(DISTANCE_SIGNAL, 0)
+    age = now_nanos - timestamp
+    if timestamp <= 0 or age < 0 or age > DISTANCE_STALE_NS:
+      return
+
+    raw_value = int(self.distance_parser.vl[DISTANCE_MESSAGE][DISTANCE_SIGNAL])
+    level = DISTANCE_LEVELS.get(raw_value)
+    if level is not None:
+      self._distance_level = level
+      self._distance_valid = True
 
   def _night_mode(self, now_ns: int) -> bool:
     if self.lighting_parser is None:
@@ -111,6 +147,9 @@ class TeslaCardAdapter:
       self.traffic_control_observer.update(can_list, time.monotonic_ns())
     if self.lighting_parser is not None:
       self.lighting_parser.update(can_list)
+    if self.distance_parser is not None:
+      self.distance_parser.update(can_list)
+    self._update_distance_state(time.monotonic_ns())
 
     state = getattr(self.car_interface, "CS", None)
     update_template = getattr(state, "update_speed_button_template", None)
@@ -145,6 +184,8 @@ class TeslaCardAdapter:
       self.ambient.service_params(params)
 
   def publish_state(self, state_sp, now_ns: int | None = None) -> None:
+    state_sp.teslaAccDistanceLevel = self._distance_level if self._distance_valid else 0
+    state_sp.teslaAccDistanceValid = self._distance_valid
     if self.traffic_control_observer is None:
       return
     publish_tesla_traffic_control(
