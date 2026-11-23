@@ -60,33 +60,11 @@ class ChevronMetrics:
 
   @staticmethod
   def _build_text_lines(d_rel: float, v_rel: float, v_ego: float) -> list[str]:
-    """Build text lines based on chevron info setting"""
-    text_lines = []
-
-    # Distance
-    if ui_state.chevron_metrics == ChevronOptions.DISTANCE_ONLY or ui_state.chevron_metrics == ChevronOptions.ALL:
-      val = max(0.0, d_rel)
-      unit = "m" if ui_state.is_metric else "ft"
-      if not ui_state.is_metric:
-        val *= 3.28084
-      text_lines.append(f"{val:.0f} {unit}")
-
-    # Speed
-    if ui_state.chevron_metrics == ChevronOptions.SPEED_ONLY or ui_state.chevron_metrics == ChevronOptions.ALL:
-      multiplier = CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH
-      val = max(0.0, (v_rel + v_ego) * multiplier)
-      unit = "km/h" if ui_state.is_metric else "mph"
-      text_lines.append(f"{val:.0f} {unit}")
-
-    # Time to collision
-    if ui_state.chevron_metrics == ChevronOptions.TTC_ONLY or ui_state.chevron_metrics == ChevronOptions.ALL:
-      # v_rel is lead speed minus ego speed; negative means closing.
-      closing_speed = -v_rel
-      val = (d_rel / closing_speed) if (d_rel > 0 and closing_speed > 0.1) else 0.0
-      ttc_text = f"{val:.1f} s" if (0 < val < 200) else "---"
-      text_lines.append(ttc_text)
-
-    return text_lines
+    """Build lead-vehicle overlay with distance only (no units or extra metrics)."""
+    distance = max(0.0, d_rel)
+    if not ui_state.is_metric:
+      distance *= 3.28084
+    return [f"{distance:.0f}"]
 
   def _render_text_lines(self, text_lines: list[str], chevron_x: float, chevron_y: float,
                          sz: float, rect: rl.Rectangle):
