@@ -141,8 +141,10 @@ class TrafficControlRenderer(Widget):
     # Main HUD traffic indicator: one circular lamp instead of a vertical
     # three-lamp traffic-light housing.
     if self.compact:
-      housing = rl.Rectangle(icon.x + 4, icon.y + 20, 24, 24)
-      radius = 7.0
+      # Match the compact traffic lamp to the larger green status indicator
+      # on the right side of the Mici display, keeping the same center point.
+      housing = rl.Rectangle(icon.x - 4, icon.y + 12, 40, 40)
+      radius = 16.0
       outline_width = 1.5
     else:
       housing = rl.Rectangle(icon.x + 32, icon.y + 20, 64, 64)
