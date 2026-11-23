@@ -53,6 +53,23 @@ def _download_urls(url: str) -> list[str]:
   return urls
 
 
+def _write_chunk_manifest(base_path: str, num_chunks: int) -> None:
+  """Atomically publish a manifest after every chunk has passed integrity checks."""
+  from openpilot.common.file_chunker import get_manifest_path
+
+  manifest_path = get_manifest_path(base_path)
+  temporary_path = f"{manifest_path}.tmp"
+  try:
+    with open(temporary_path, "w") as manifest:
+      manifest.write(str(num_chunks))
+      manifest.flush()
+      os.fsync(manifest.fileno())
+    os.replace(temporary_path, manifest_path)
+  finally:
+    if os.path.isfile(temporary_path):
+      os.remove(temporary_path)
+
+
 SPEED_FLOOR = 0.05 * 1024 ** 2
 
 
@@ -332,7 +349,7 @@ class ModelManagerSP:
           await asyncio.sleep(min(RETRY_POLL, remaining))
 
   async def _download_chunked(self, base_url: str, base_path: str, artifact, skip: frozenset[int] | set[int] = frozenset()) -> None:
-    from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+    from openpilot.common.file_chunker import get_chunk_name
 
     num_chunks = len(artifact.chunks)
     if num_chunks == 0:
@@ -369,8 +386,7 @@ class ModelManagerSP:
               self._report_status()
         completed += 1
 
-    with open(manifest_path, 'w') as f:  # noqa: ASYNC230
-      f.write(str(num_chunks))
+    # Do not publish a manifest here: chunk integrity is checked by the caller.
     if os.path.isfile(base_path):  # noqa: ASYNC240
       os.remove(base_path)
     del self._download_start_times[artifact.fileName]
@@ -403,7 +419,18 @@ class ModelManagerSP:
           artifact.downloadProgress.progress = (len(valid_chunks) / num_chunks) * 100
           self._sync_artifact_progress(artifact)
           self._report_status()
-        is_cached = len(valid_chunks) == num_chunks
+        manifest_path = get_manifest_path(full_path)
+        manifest_valid = False
+        try:
+          manifest_valid = int(open(manifest_path).read().strip()) == num_chunks
+        except (OSError, ValueError):
+          pass
+        chunks_complete = len(valid_chunks) == num_chunks
+        # A complete, verified chunk set can safely recreate a missing/stale manifest.
+        if chunks_complete and not manifest_valid:
+          _write_chunk_manifest(full_path, num_chunks)
+          manifest_valid = True
+        is_cached = chunks_complete and manifest_valid
       else:
         if await verify_file(full_path, expected_hash):
           is_cached = True
@@ -420,18 +447,23 @@ class ModelManagerSP:
       for attempt, download_url in enumerate(download_urls):
         try:
           if len(artifact.chunks) > 0:
-            from openpilot.common.file_chunker import get_chunk_name
+            from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
             # Keep verified chunks, but never mix partial data from different hosts.
             for i in range(len(artifact.chunks)):
               if i not in valid_chunks:
                 chunk_path = get_chunk_name(full_path, i, len(artifact.chunks))
                 if os.path.isfile(chunk_path):
                   os.remove(chunk_path)
+            # Hide any stale manifest while the chunk set is incomplete.
+            manifest_path = get_manifest_path(full_path)
+            if os.path.isfile(manifest_path):
+              os.remove(manifest_path)
             await self._download_chunked(download_url, full_path, artifact, skip=valid_chunks)
             for i, chunk in enumerate(artifact.chunks):
               chunk_path = get_chunk_name(full_path, i, len(artifact.chunks))
               if not await verify_file(chunk_path, chunk.sha256):
                 raise ValueError(f"Hash validation failed for chunk {i+1} of {filename}")
+            _write_chunk_manifest(full_path, len(artifact.chunks))
           else:
             await self._download_with_retries(download_url, full_path, artifact)
             self._set_progress(artifact, custom.ModelManagerSP.DownloadStatus.verifying, 99)
