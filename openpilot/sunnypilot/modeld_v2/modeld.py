@@ -263,7 +263,7 @@ class ModelState(ModelStateBase):
       desired_curvature = get_curvature_from_output(model_output, curvature_plan, v_ego, lat_action_t, self.mlsim)
     else:
       desired_accel = model_output['action'][0, 1]
-      desired_curvature = model_output['action'][0, 0] / (max(1.0, v_ego))**2
+      desired_curvature = model_output['action'][0, 0] / (max(2.5, v_ego))**2
 
     stop = v_ego < 0.3 and desired_accel < 0.1
     desired_accel = smooth_value(desired_accel, prev_action.desiredAcceleration, self.LONG_SMOOTH_SECONDS)
@@ -335,7 +335,13 @@ def main(demo=False):
     loader.start()
     loader.join(BIG_MODEL_TIMEOUT)
     model = big_model
-    params.put_bool("ChestnutActive", model is not None)
+    if model is None and not params.get_bool("ChestnutRetry"):
+      # A crank can cut Chestnut power during loading; request one onroad cycle to retry enumeration.
+      cloudlog.error("big model load failed, cycling onroad to retry")
+      params.put_bool("ChestnutRetry", True)
+      params.put_bool("OnroadCycleRequested", True)
+    else:
+      params.put_bool("ChestnutActive", model is not None)
 
   small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
   if model is None:
