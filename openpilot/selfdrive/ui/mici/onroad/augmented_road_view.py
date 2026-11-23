@@ -53,7 +53,7 @@ class AccDistanceIndicator(Widget):
     self._car_green = gui_app.texture("icons_mici/longitudinal/car_green.png", 44, 28)
     self._bar_filters = [FirstOrderFilter(0.0, 0.06, 1 / gui_app.target_fps) for _ in range(6)]
 
-  def render(self, rect: rl.Rectangle):
+  def _render(self, rect: rl.Rectangle):
     sm = ui_state.sm
     if not ui_state.started or not sm["selfdriveState"].enabled:
       for fade in self._bar_filters:
