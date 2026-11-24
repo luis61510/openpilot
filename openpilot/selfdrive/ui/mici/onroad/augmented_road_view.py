@@ -44,7 +44,8 @@ CAM_Y_OFFSET = 20
 class AccDistanceIndicator(Widget):
   """Tesla ACC follow-distance indicator, shown only while openpilot is engaged."""
 
-  BAR_LENGTHS = (26, 34, 42, 50, 58, 66)
+  # Keep all six distance bars the same width, matching the original shortest bar.
+  BAR_LENGTHS = (26, 26, 26, 26, 26, 26)
   BAR_SPACING = 19
   BAR_THICKNESS = 8
 
