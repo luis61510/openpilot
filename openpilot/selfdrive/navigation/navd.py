@@ -79,6 +79,8 @@ class RouteEngine:
     if destination is None:
       self.clear_route()
       self.recompute_hold = 0
+      if self.params.get_bool("NavigationEnabled"):
+        self.params.put_bool("NavigationEnabled", False, block=True)
       return
     new_destination = (destination['longitude'], destination['latitude'])
 
@@ -179,6 +181,7 @@ class RouteEngine:
         # Clear route if driving away from destination
         if np.linalg.norm(local_meters(self.last_position, self.nav_destination)) > REROUTE_DISTANCE:
           self.params.remove("NavDestination")
+          self.params.put_bool("NavigationEnabled", False, block=True)
           self.clear_route()
 
   def send_route(self):
