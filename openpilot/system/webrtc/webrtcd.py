@@ -159,7 +159,9 @@ class DynamicPubMaster(messaging.PubMaster):
 
 
 class LivestreamBitrateController(AsyncTaskRunner):
-  bitrates = [500_000, 1_500_000, int(os.environ.get("STREAM_BITRATE", 5_000_000))]
+  # Higher peak bitrate improves fine road detail on a stable Wi-Fi link.
+  # Adaptive control still steps down automatically when packet loss rises.
+  bitrates = [750_000, 2_500_000, int(os.environ.get("STREAM_BITRATE", 8_000_000))]
   label_to_bitrate = { "high": bitrates[2], "med": bitrates[1], "low": bitrates[0]}
   sample_interval = 0.2
   high_level = 0.1 # drop immediately
