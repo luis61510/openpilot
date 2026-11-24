@@ -157,8 +157,11 @@ class ModelRenderer(Widget, ModelRendererSP):
       self._draw_path(sm)
 
     # Lead metrics are rendered independently of the lead-chevron fill.
-    # ChevronInfo controls Off / Distance / Speed / TTC / All.
-    if render_lead_indicator and radar_state is not None and sm.valid["carState"]:
+    # Hide the overlay in Park and fade its visibility state out while stationary.
+    car_in_park = sm.valid["carState"] and sm["carState"].gearShifter == car.GearShifter.park
+    if car_in_park:
+      self._chevron_metrics.update_alpha(False)
+    elif render_lead_indicator and radar_state is not None and sm.valid["carState"]:
       self._chevron_metrics.draw_lead_status(sm, radar_state, rect, self._lead_vehicles)
 
   def _update_raw_points(self, model):
