@@ -140,7 +140,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"ChestnutActive", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"ChestnutLoading", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION | CLEAR_ON_IGNITION_ON, BOOL}},
     {"ChestnutRetry", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},
-    {"NavDestination", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
+    {"NavDestination", {PERSISTENT, JSON}},
     {"NavigationEnabled", {PERSISTENT, BOOL, "0"}},
     {"NavigationWebToken", {PERSISTENT | DONT_LOG, STRING}},
     {"Version", {PERSISTENT, STRING}},
