@@ -19,10 +19,11 @@ from openpilot.system.ui.widgets.scroller_tici import LineSeparator, Scroller
 
 class CompactParamItem(Widget):
   """Two-line, compact parameter row for small Comma displays."""
-  def __init__(self, title, value):
+  def __init__(self, title, value, value_font_size=32):
     super().__init__()
     self._title = title
     self._value = value
+    self._value_font_size = value_font_size
     self.set_rect(rl.Rectangle(0, 0, 600, 116))
 
   def _render(self, _rect):
@@ -31,7 +32,7 @@ class CompactParamItem(Widget):
     gui_label(title_rect, self._title(), font_size=26, color=rl.Color(170, 170, 170, 255),
               font_weight=FontWeight.NORMAL, alignment=TextAlignment.LEFT,
               alignment_vertical=TextAlignmentVertical.MIDDLE)
-    gui_label(value_rect, self._value(), font_size=32, color=rl.WHITE,
+    gui_label(value_rect, self._value(), font_size=self._value_font_size, color=rl.WHITE,
               font_weight=FontWeight.NORMAL, alignment=TextAlignment.LEFT,
               alignment_vertical=TextAlignmentVertical.MIDDLE)
 
@@ -43,7 +44,7 @@ class NavigationLayout(Widget):
     items = [
       CompactParamItem(lambda: tr("Phone setup address"), self._get_address),
       LineSeparator(),
-      CompactParamItem(lambda: tr("Pairing code"), self._get_pairing_code),
+      CompactParamItem(lambda: tr("Pairing code"), self._get_pairing_code, value_font_size=22),
       LineSeparator(),
       text_item(lambda: tr("How to use"), lambda: tr("Connect your phone to the same Wi-Fi, open the address above, enter the pairing code, then search or select a destination.")),
     ]
