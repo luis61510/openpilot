@@ -173,8 +173,9 @@ class NavigationRequestHandler(BaseHTTPRequestHandler):
     if self.path == "/api/status":
       if not self._authorized():
         return self._json(401, {"error": "配对码错误或未配对"})
-      destination = Params().get("NavDestination")
-      return self._json(200, {"destination": destination})
+      params = Params()
+      destination = params.get("NavDestination")
+      return self._json(200, {"destination": destination, "navigation_enabled": params.get_bool("NavigationEnabled")})
     return self._json(404, {"error": "not found"})
 
   def do_POST(self):
@@ -187,7 +188,7 @@ class NavigationRequestHandler(BaseHTTPRequestHandler):
       params = Params()
       if self.path == "/api/status":
         destination = params.get("NavDestination")
-        return self._json(200, {"destination": destination})
+        return self._json(200, {"destination": destination, "navigation_enabled": params.get_bool("NavigationEnabled")})
       if self.path == "/api/parse-amap":
         result = parse_amap_url(str(body.get("url", ""))[:2048])
         return self._json(200, result)
@@ -195,15 +196,22 @@ class NavigationRequestHandler(BaseHTTPRequestHandler):
         if body.get("clear") is True:
           params.remove("NavDestination")
           params.put_bool("NavigationEnabled", False, block=True)
-          return self._json(200, {"ok": True, "cleared": True})
+          if params.get("NavDestination") is not None or params.get_bool("NavigationEnabled"):
+            raise RuntimeError("清除目的地后状态校验失败")
+          return self._json(200, {"ok": True, "cleared": True, "navigation_enabled": False})
         lon, lat = float(body.get("longitude")), float(body.get("latitude"))
         if not (math.isfinite(lon) and math.isfinite(lat) and -180 <= lon <= 180 and -90 <= lat <= 90):
           raise ValueError("经纬度超出有效范围")
         name = str(body.get("name", "手机设置的目的地"))[:120]
         params.put("NavDestination", {"longitude": lon, "latitude": lat, "name": name}, block=True)
         params.put_bool("NavigationEnabled", True, block=True)
+        stored_destination = params.get("NavDestination")
+        if not isinstance(stored_destination, dict) or not params.get_bool("NavigationEnabled"):
+          raise RuntimeError("目的地写入后状态校验失败")
+        if stored_destination.get("longitude") != lon or stored_destination.get("latitude") != lat:
+          raise RuntimeError("目的地坐标写入校验失败")
         cloudlog.info("navigation_webd: destination updated from paired local client")
-        return self._json(200, {"ok": True})
+        return self._json(200, {"ok": True, "destination": stored_destination, "navigation_enabled": True})
       return self._json(404, {"error": "not found"})
     except (ValueError, TypeError, json.JSONDecodeError, requests.RequestException) as e:
       return self._json(400, {"error": str(e)})
