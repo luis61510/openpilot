@@ -142,8 +142,8 @@ class HudRenderer(Widget):
     self._can_draw_top_icons = can_draw_top_icons
 
   def drawing_top_icons(self) -> bool:
-    # whether we're drawing any top icons currently
-    return bool(self._set_speed_alpha_filter.x > 1e-2)
+    # Speed/MAX overlay is intentionally disabled for the mirrored view.
+    return False
 
   def _update_state(self) -> None:
     """Update HUD state based on car state and controls state."""
@@ -181,9 +181,6 @@ class HudRenderer(Widget):
     """Render HUD elements to the screen."""
 
     self._torque_bar.render(rect)
-
-    if self.is_cruise_set:
-      self._draw_set_speed(rect)
 
     self._draw_model_source(rect)
     self._draw_chestnut_telemetry(rect)
