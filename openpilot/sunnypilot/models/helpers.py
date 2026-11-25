@@ -247,11 +247,15 @@ def get_active_model_runner(params: Params | None = None, force_check: bool = Fa
   return runner_type
 
 
+def get_driving_model(bundle):
+  """Return the bundle's driving model by declared type, never by list position."""
+  if bundle is None:
+    return None
+  return next((model for model in bundle.models if model.type == ModelManager.Model.Type.supercombo), None)
+
+
 def _get_model():
-  if bundle := get_active_bundle():
-    drive_model = next(model for model in bundle.models if model.type == ModelManager.Model.Type.supercombo)
-    return drive_model
-  return None
+  return get_driving_model(get_active_bundle())
 
 
 # The following method(s) are modeld helper methods
