@@ -14,7 +14,7 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.modeld.helpers import chestnut_present
 from openpilot.sunnypilot.modeld_v2.helpers import cache_is_fresh, load_model, read_parts
-from openpilot.sunnypilot.models.helpers import get_selected_bundle
+from openpilot.sunnypilot.models.helpers import get_selected_bundle, get_driving_model
 
 WARMUP_TIMEOUT = 120
 WARMUP_TERMINATE_TIMEOUT = 5
@@ -64,7 +64,8 @@ def main():
         continue
 
       bundle = get_selected_bundle(params, source)
-      path = os.path.join(Paths.model_root(), bundle.models[0].artifact.fileName) if bundle and bundle.models else ""
+      driving_model = get_driving_model(bundle)
+      path = os.path.join(Paths.model_root(), driving_model.artifact.fileName) if driving_model else ""
 
       if not path or not os.path.isfile(path) or cache_is_fresh(path):
         continue
