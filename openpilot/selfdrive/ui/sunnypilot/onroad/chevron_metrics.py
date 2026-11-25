@@ -7,6 +7,7 @@ See the LICENSE.md file in the root directory for more details.
 import numpy as np
 
 import pyray as rl
+from opendbc.car.structs import car
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -104,6 +105,11 @@ class ChevronMetrics:
       rl.draw_text_ex(self._font, line, rl.Vector2(x, y), font_size, 0, text_color)
 
   def draw_lead_status(self, sm, radar_state, rect, lead_vehicles):
+    # Do not show lead distance/TTC numbers while the vehicle is in Park.
+    if sm["carState"].gearShifter == car.CarState.GearShifter.park:
+      self._lead_status_alpha = 0.0
+      return
+
     lead_one = radar_state.leadOne
     lead_two = radar_state.leadTwo
 
