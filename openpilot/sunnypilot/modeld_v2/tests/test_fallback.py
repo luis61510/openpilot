@@ -16,6 +16,7 @@ import openpilot.sunnypilot.modeld_v2.modeld as modeld_module
 from openpilot.sunnypilot.modeld_v2.tests import helpers as tests_helpers
 from openpilot.sunnypilot.modeld_v2.tests.helpers import DummyModel, DummyBundle, CAM_W, CAM_H
 from openpilot.sunnypilot.models.fetcher import ModelParser, ModelFetcher
+from openpilot.sunnypilot.models.helpers import ModelManager, get_driving_model
 
 tmp_path = tests_helpers.tmp_path
 
@@ -30,6 +31,18 @@ class _FakeSubMaster:
 
 
 class TestFallback(OpenpilotTestCase):
+  def test_driving_model_is_selected_by_type_not_bundle_order(self):
+    from types import SimpleNamespace
+
+    vision = SimpleNamespace(type=ModelManager.Model.Type.vision, artifact=SimpleNamespace(fileName="vision.pkl"))
+    policy = SimpleNamespace(type=ModelManager.Model.Type.policy, artifact=SimpleNamespace(fileName="policy.pkl"))
+    driving = SimpleNamespace(type=ModelManager.Model.Type.supercombo, artifact=SimpleNamespace(fileName="driving.pkl"))
+    bundle = SimpleNamespace(models=[vision, policy, driving])
+
+    assert get_driving_model(bundle) is driving
+    assert get_driving_model(SimpleNamespace(models=[vision, policy])) is None
+    assert get_driving_model(None) is None
+
   def test_chestnut_recovery_requires_stopped_disengaged_vehicle(self):
     from types import SimpleNamespace
 
