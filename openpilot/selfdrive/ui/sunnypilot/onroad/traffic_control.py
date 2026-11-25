@@ -27,9 +27,9 @@ CONTROL_OUTLINE = rl.Color(64, 156, 255, 255)
 
 def traffic_card_rect(rect: rl.Rectangle, compact: bool = False) -> rl.Rectangle:
   if compact:
-    # Place the lamp at the far upper-left, immediately below the 60px driver-state icon.
-    # Keep a 2px vertical gap and leave the longitudinal indicator untouched.
-    return rl.Rectangle(rect.x + 8, rect.y + 72, 40, 40)
+    # Anchor the lamp at the very top-left edge of the compact HUD.
+    # Keep the 40px lamp size and leave the longitudinal indicator untouched.
+    return rl.Rectangle(rect.x + 8, rect.y + 8, 40, 40)
   return rl.Rectangle(
     rect.x + 46.0,
     rect.y + UI_CONFIG.header_height + TRAFFIC_CARD_TOP_OFFSET,
