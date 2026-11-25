@@ -321,26 +321,42 @@ def main(demo=False):
 
   model = None
   if CHESTNUT:
-    big_model = None
-    def load_big():
-      nonlocal big_model
-      try:
-        _wait_for_chestnut()
-        m = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
-        big_model = m
-      except Exception:
-        cloudlog.exception("chestnut load failed")
-    loader = threading.Thread(target=load_big, daemon=True)
-    loader.start()
-    loader.join(BIG_MODEL_TIMEOUT)
-    model = big_model
-    if model is None and not params.get_bool("ChestnutRetry"):
-      # A crank can cut Chestnut power during loading; request one onroad cycle to retry enumeration.
-      cloudlog.error("big model load failed, cycling onroad to retry")
-      params.put_bool("ChestnutRetry", True)
-      params.put_bool("OnroadCycleRequested", True)
-    else:
-      params.put_bool("ChestnutActive", model is not None)
+    # Retry failed big-model loads in this process. A timed-out loader thread cannot be
+    # safely cancelled, so never start a second GPU load while that thread is still alive.
+    max_big_model_attempts = 2
+    for attempt in range(1, max_big_model_attempts + 1):
+      big_model = None
+      big_error = []
+
+      def load_big():
+        nonlocal big_model
+        try:
+          _wait_for_chestnut()
+          big_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
+        except Exception as e:
+          big_error.append(e)
+          cloudlog.exception("chestnut load failed (attempt %d)", attempt)
+
+      loader = threading.Thread(target=load_big, daemon=True, name=f"chestnut-model-loader-{attempt}")
+      loader.start()
+      loader.join(BIG_MODEL_TIMEOUT)
+
+      if loader.is_alive():
+        cloudlog.error("chestnut load timed out after %ss; keeping small model available and not starting another GPU loader",
+                       BIG_MODEL_TIMEOUT)
+        break
+
+      if big_model is not None:
+        model = big_model
+        cloudlog.info("chestnut model loaded on attempt %d/%d", attempt, max_big_model_attempts)
+        break
+
+      if attempt < max_big_model_attempts:
+        cloudlog.warning("retrying chestnut model load in the same modeld process (%d/%d)",
+                         attempt + 1, max_big_model_attempts)
+        time.sleep(1.0)
+
+    params.put_bool("ChestnutActive", model is not None)
 
   small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
   if model is None:
