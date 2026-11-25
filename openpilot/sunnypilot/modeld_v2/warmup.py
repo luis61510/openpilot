@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Offroad Tinygrad model cache warmup.
+Offroad Tinygrad model cache warmup for QCOM and Chestnut AMD models.
 """
 
 import multiprocessing
@@ -12,37 +12,63 @@ os.environ["GMMU"] = "0"
 from openpilot.common.hardware.hw import Paths
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.modeld.helpers import chestnut_present
 from openpilot.sunnypilot.modeld_v2.helpers import cache_is_fresh, load_model, read_parts
 from openpilot.sunnypilot.models.helpers import get_selected_bundle
 
 
+def _warmup_model(path: str, source: str) -> None:
+  # Match modeld's AMD wait behavior before the first Chestnut device operation.
+  if source == "chestnut":
+    from tinygrad.runtime.ops_amd import AMDDevice
+    AMDDevice.wait_timeout_ms = 3000
+  load_model(path)
+
+
 def main():
+  """
+  Runs offroad and prepares stale plain-artifact caches for the selected QCOM
+  and Chestnut models. Chestnut is only touched when its USB device is present.
+  Native artifacts are already fused/compiled and legacy OOB artifacts do not
+  use this plain-artifact cache format.
+  """
   params, failed, native = Params(), set(), set()
   spawn = multiprocessing.get_context("spawn")
 
   while True:
-    bundle = get_selected_bundle(params, "qcom")
-    path = os.path.join(Paths.model_root(), bundle.models[0].artifact.fileName) if bundle and bundle.models else ""
+    for source in ("chestnut", "qcom"):
+      if source == "chestnut" and not chestnut_present():
+        continue
 
-    if path and os.path.isfile(path) and not cache_is_fresh(path):
-      attempt = (path, os.stat(path).st_mtime_ns)
-      if attempt not in failed | native:
-        try:
-          _, extras = read_parts(path)
-        except (OSError, ValueError, KeyError) as e:
-          # Legacy OOB pickles are loaded by load_compatible_model, not this Plain Artifact cache worker.
-          cloudlog.warning(f"skipping cache warmup for legacy/unsupported model {path}: {e}")
-          failed.add(attempt)
-        else:
-          if "input_specs" in extras:
-            native.add(attempt)
-          else:
-            worker = spawn.Process(target=load_model, args=(path,), daemon=True)
-            worker.start()
-            worker.join()
-            if not cache_is_fresh(path):
-              cloudlog.error(f"model cache warmup failed for {path} with exit code {worker.exitcode}")
-              failed.add(attempt)
+      bundle = get_selected_bundle(params, source)
+      path = os.path.join(Paths.model_root(), bundle.models[0].artifact.fileName) if bundle and bundle.models else ""
+
+      if not path or not os.path.isfile(path) or cache_is_fresh(path):
+        continue
+
+      attempt = (source, path, os.stat(path).st_mtime_ns)
+      if attempt in failed | native:
+        continue
+
+      try:
+        _, extras = read_parts(path)
+      except (OSError, ValueError, KeyError, EOFError) as e:
+        # Legacy OOB models are loaded by load_compatible_model and have no
+        # plain-artifact cache to warm.
+        cloudlog.warning(f"skipping {source} cache warmup for legacy/unsupported model {path}: {e}")
+        failed.add(attempt)
+        continue
+
+      if "input_specs" in extras:
+        native.add(attempt)
+        continue
+
+      worker = spawn.Process(target=_warmup_model, args=(path, source), daemon=True)
+      worker.start()
+      worker.join()
+      if not cache_is_fresh(path):
+        cloudlog.error(f"{source} model cache warmup failed for {path} with exit code {worker.exitcode}")
+        failed.add(attempt)
 
     time.sleep(10)
 
