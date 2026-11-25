@@ -338,6 +338,8 @@ def main(demo=False):
   st = time.monotonic()
 
   model = None
+  chestnut_initial_load_timed_out = False
+  initial_big_loader = None
   if CHESTNUT:
     # Retry failed big-model loads in this process. A timed-out loader thread cannot be
     # safely cancelled, so never start a second GPU load while that thread is still alive.
@@ -360,6 +362,8 @@ def main(demo=False):
       loader.join(BIG_MODEL_TIMEOUT)
 
       if loader.is_alive():
+        chestnut_initial_load_timed_out = True
+        initial_big_loader = loader
         cloudlog.error("chestnut load timed out after %ss; keeping small model available and not starting another GPU loader",
                        BIG_MODEL_TIMEOUT)
         break
@@ -403,7 +407,9 @@ def main(demo=False):
   chestnut_recovery_next_attempt = time.monotonic() + 30.0
   chestnut_recovery_attempts = 0
   chestnut_recovery_timed_out = False
-  chestnut_recovery_disabled = False
+  # Never start a second AMD loader while a startup loader that exceeded its
+  # timeout may still be running in the background.
+  chestnut_recovery_disabled = chestnut_initial_load_timed_out
 
   # setup filter to track dropped frames
   frame_dropped_filter = FirstOrderFilter(0., 10., 1. / model.constants.MODEL_FREQ)
@@ -468,6 +474,9 @@ def main(demo=False):
       meta_extra = meta_main
 
     sm.update(0)
+    if initial_big_loader is not None and not initial_big_loader.is_alive():
+      initial_big_loader = None
+      big_model = None
 
     # Recover the AMD model only while the vehicle is stationary and all openpilot
     # actuators are disengaged. Model loading runs off the model frame loop; model
