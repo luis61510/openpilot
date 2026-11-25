@@ -78,6 +78,15 @@ def _check_finite_model_output(output) -> None:
     raise RuntimeError("model output not finite")
 
 
+def _can_recover_chestnut(sm) -> bool:
+  if not sm.seen['carState'] or not sm.seen['carControl']:
+    return False
+  car_state = sm['carState']
+  car_control = sm['carControl']
+  return (car_state.standstill and abs(car_state.vEgo) < 0.1 and
+          not car_control.enabled and not car_control.latActive and not car_control.longActive)
+
+
 def _wait_for_chestnut(timeout: float = 10.0) -> None:
   # USB cable detection can happen before the Chestnut device finishes enumerating.
   start_time = time.monotonic()
@@ -370,6 +379,8 @@ def main(demo=False):
   small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
   if model is None:
     model = small_model
+  # Do not retain a second reference to the AMD model after selecting the active model.
+  big_model = None
   params.put_bool("ChestnutLoading", False)
   assert model is not None
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
@@ -385,6 +396,14 @@ def main(demo=False):
 
   publish_state = PublishState()
   chestnut_state = ChestnutGpuState(pm, model.chestnut) if CHESTNUT else None
+  chestnut_recovery_thread = None
+  chestnut_recovery_result = {}
+  chestnut_recovery_candidate = None
+  chestnut_recovery_started = 0.0
+  chestnut_recovery_next_attempt = time.monotonic() + 30.0
+  chestnut_recovery_attempts = 0
+  chestnut_recovery_timed_out = False
+  chestnut_recovery_disabled = False
 
   # setup filter to track dropped frames
   frame_dropped_filter = FirstOrderFilter(0., 10., 1. / model.constants.MODEL_FREQ)
@@ -449,6 +468,69 @@ def main(demo=False):
       meta_extra = meta_main
 
     sm.update(0)
+
+    # Recover the AMD model only while the vehicle is stationary and all openpilot
+    # actuators are disengaged. Model loading runs off the model frame loop; model
+    # replacement happens here, at a frame boundary, after the loader has exited.
+    if CHESTNUT and not model.chestnut and not chestnut_recovery_disabled:
+      recovery_safe = _can_recover_chestnut(sm)
+      now = time.monotonic()
+
+      if chestnut_recovery_thread is not None:
+        if chestnut_recovery_thread.is_alive():
+          if not chestnut_recovery_timed_out and now - chestnut_recovery_started > BIG_MODEL_TIMEOUT:
+            cloudlog.error("chestnut recovery load timed out; waiting for loader to exit and disabling further retries")
+            chestnut_recovery_timed_out = True
+        else:
+          chestnut_recovery_thread = None
+          params.put_bool("ChestnutLoading", False)
+          if chestnut_recovery_timed_out:
+            chestnut_recovery_disabled = True
+            chestnut_recovery_result.clear()
+          elif "model" in chestnut_recovery_result:
+            chestnut_recovery_candidate = chestnut_recovery_result.pop("model")
+            cloudlog.info("chestnut recovery model loaded; waiting for safe frame-boundary switch")
+          else:
+            delay = min(300.0, 30.0 * (2 ** max(0, chestnut_recovery_attempts - 1)))
+            chestnut_recovery_next_attempt = now + delay
+            cloudlog.warning("chestnut recovery attempt failed; retrying in %.0fs: %s",
+                             delay, chestnut_recovery_result.get("error", "unknown error"))
+            chestnut_recovery_result.clear()
+
+      if chestnut_recovery_candidate is not None and recovery_safe:
+        model = chestnut_recovery_candidate
+        chestnut_recovery_candidate = None
+        model.lat_delay = get_lat_delay(params, sm["lateralDelay"].lateralDelay)
+        model.PLANPLUS_CONTROL = params.get("PlanplusControl", return_default=True)
+        params.put_bool("ChestnutActive", True)
+        params.put_bool("ChestnutLoading", False)
+        if chestnut_state is not None:
+          chestnut_state.big = True
+        run_count = 0
+        frame_dropped_filter.x = 0.0
+        prev_action = log.ModelDataV2.Action()
+        cloudlog.warning("chestnut model recovered and activated while vehicle stopped and disengaged")
+      elif chestnut_recovery_thread is None and chestnut_recovery_candidate is None and recovery_safe and now >= chestnut_recovery_next_attempt:
+        chestnut_recovery_attempts += 1
+        chestnut_recovery_result = {}
+        chestnut_recovery_started = now
+        params.put_bool("ChestnutLoading", True)
+
+        def recover_chestnut():
+          try:
+            _wait_for_chestnut()
+            chestnut_recovery_result["model"] = ModelState(
+              cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
+          except Exception as e:
+            chestnut_recovery_result["error"] = repr(e)
+            cloudlog.exception("chestnut runtime recovery load failed")
+
+        chestnut_recovery_thread = threading.Thread(
+          target=recover_chestnut, daemon=True, name="chestnut-model-recovery")
+        chestnut_recovery_thread.start()
+        cloudlog.warning("starting chestnut recovery attempt %d while vehicle stopped and disengaged",
+                         chestnut_recovery_attempts)
+
     desire = DH.desire
     is_rhd = sm["driverMonitoringState"].isRHD
     frame_id = sm["narrowRoadCameraState"].frameId
@@ -518,7 +600,28 @@ def main(demo=False):
       if chestnut_state is not None:
         chestnut_state.big = False
       run_count = 0
-      model_output = None
+      chestnut_recovery_next_attempt = time.monotonic() + 30.0
+
+      # Run the small model on this same camera frame. Do not leave modelV2
+      # unpublished for a cycle after a big-model failure.
+      model.lat_delay = get_lat_delay(params, sm["lateralDelay"].lateralDelay)
+      model.PLANPLUS_CONTROL = params.get("PlanplusControl", return_default=True)
+      lat_delay = model.lat_delay + model.LAT_SMOOTH_SECONDS
+      long_delay = CP.longitudinalActuatorDelay + model.LONG_SMOOTH_SECONDS
+      lat_action_t = lat_delay + DT_MDL + DT_MDL / 2
+      long_action_t = long_delay + DT_MDL + DT_MDL / 2
+      fallback_desire = np.zeros(model.constants.DESIRE_LEN, dtype=np.float32)
+      if 0 <= desire < model.constants.DESIRE_LEN:
+        fallback_desire[desire] = 1
+      fallback_inputs = {model.desire_key: fallback_desire, 'traffic_convention': traffic_convention}
+      if 'lateral_control_params' in model.numpy_inputs:
+        fallback_inputs['lateral_control_params'] = np.array([v_ego, lat_delay], dtype=np.float32)
+      if 'action_t' in model.numpy_inputs:
+        fallback_inputs['action_t'] = np.array([lat_action_t, long_action_t], dtype=np.float32)
+      fallback_bufs = {name: buf_extra if 'big' in name else buf_main for name in model.vision_input_names}
+      fallback_transforms = {name: model_transform_extra if 'big' in name else model_transform_main
+                             for name in model.vision_input_names}
+      model_output = model.run(fallback_bufs, fallback_transforms, fallback_inputs)
     mt2 = time.perf_counter()
     model_execution_time = mt2 - mt1
 

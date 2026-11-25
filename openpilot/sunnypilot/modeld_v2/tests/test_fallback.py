@@ -20,7 +20,31 @@ from openpilot.sunnypilot.models.fetcher import ModelParser, ModelFetcher
 tmp_path = tests_helpers.tmp_path
 
 
+class _FakeSubMaster:
+  def __init__(self, car_state, car_control, seen=True):
+    self.seen = {'carState': seen, 'carControl': seen}
+    self.data = {'carState': car_state, 'carControl': car_control}
+
+  def __getitem__(self, key):
+    return self.data[key]
+
+
 class TestFallback(OpenpilotTestCase):
+  def test_chestnut_recovery_requires_stopped_disengaged_vehicle(self):
+    from types import SimpleNamespace
+
+    stopped = SimpleNamespace(standstill=True, vEgo=0.0)
+    disengaged = SimpleNamespace(enabled=False, latActive=False, longActive=False)
+    assert modeld_module._can_recover_chestnut(_FakeSubMaster(stopped, disengaged))
+
+    moving = SimpleNamespace(standstill=False, vEgo=5.0)
+    assert not modeld_module._can_recover_chestnut(_FakeSubMaster(moving, disengaged))
+
+    engaged = SimpleNamespace(enabled=True, latActive=True, longActive=False)
+    assert not modeld_module._can_recover_chestnut(_FakeSubMaster(stopped, engaged))
+
+    assert not modeld_module._can_recover_chestnut(_FakeSubMaster(stopped, disengaged, seen=False))
+
   def test_find_dual_model_in_bundle(self, tmp_path, monkeypatch):
     lebowski_file = 'driving_lebowski.pkl'
     tsfdo_file = 'driving_tsfdo.pkl'

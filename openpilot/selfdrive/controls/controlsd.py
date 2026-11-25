@@ -31,6 +31,10 @@ LaneChangeDirection = log.LaneChangeDirection
 ACTUATOR_FIELDS = tuple(car.CarControl.Actuators.schema.fields.keys())
 
 
+def _model_v2_is_fresh(sm: messaging.SubMaster) -> bool:
+  return sm.alive['modelV2'] and sm.valid['modelV2']
+
+
 class Controls(ControlsExt):
   def __init__(self) -> None:
     self.params = Params()
@@ -50,6 +54,7 @@ class Controls(ControlsExt):
     self.pm = messaging.PubMaster(['carControl', 'controlsState'] + self.pm_services_ext)
 
     self.steer_limited_by_safety = False
+    self.model_v2_was_fresh = None
     self.curvature = 0.0
     self.desired_curvature = 0.0
 
@@ -81,6 +86,11 @@ class Controls(ControlsExt):
   def state_control(self):
     CS = self.sm['carState']
 
+    model_v2_fresh = _model_v2_is_fresh(self.sm)
+    if model_v2_fresh != self.model_v2_was_fresh:
+      cloudlog.warning("modelV2 freshness changed: %s", "fresh" if model_v2_fresh else "stale")
+      self.model_v2_was_fresh = model_v2_fresh
+
     # Update VehicleModel
     lp = self.sm['vehicleParameters']
     x = max(lp.stiffnessFactor, 0.1)
@@ -99,7 +109,7 @@ class Controls(ControlsExt):
 
         self.LaC.extension.update_limits()
 
-      self.LaC.extension.update_model_v2(self.sm['modelV2'])
+      self.LaC.extension.update_model_v2(self.sm['modelV2'] if model_v2_fresh else None)
 
       self.LaC.extension.update_lateral_lag(self.lat_delay)
 
@@ -115,8 +125,10 @@ class Controls(ControlsExt):
     # Get which state to use for active lateral control
     _lat_active = self.get_lat_active(self.sm)
 
-    CC.latActive = _lat_active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
-                   (not standstill or self.CP.steerAtStandstill)
+    # Do not keep lateral control active on a cached modelV2 after modeld stops publishing.
+    CC.latActive = (_lat_active and model_v2_fresh and
+                    not CS.steerFaultTemporary and not CS.steerFaultPermanent and
+                    (not standstill or self.CP.steerAtStandstill))
     CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
                     (self.CP.openpilotLongitudinalControl or not self.CP_SP.pcmCruiseSpeed)
 
@@ -124,7 +136,7 @@ class Controls(ControlsExt):
     actuators.longControlState = self.LoC.long_control_state
 
     # Enable blinkers while lane changing
-    if model_v2.meta.laneChangeState != LaneChangeState.off:
+    if model_v2_fresh and model_v2.meta.laneChangeState != LaneChangeState.off:
       CC.leftBlinker = model_v2.meta.laneChangeDirection == LaneChangeDirection.left
       CC.rightBlinker = model_v2.meta.laneChangeDirection == LaneChangeDirection.right
 
