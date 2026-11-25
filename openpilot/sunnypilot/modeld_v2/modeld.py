@@ -72,6 +72,12 @@ def _find_driving_pkl(bundle):
   return None
 
 
+def _check_finite_model_output(output) -> None:
+  values = output.values() if isinstance(output, dict) else (output,)
+  if any(not np.all(np.isfinite(value)) for value in values):
+    raise RuntimeError("model output not finite")
+
+
 def _wait_for_chestnut(timeout: float = 10.0) -> None:
   # USB cable detection can happen before the Chestnut device finishes enumerating.
   start_time = time.monotonic()
@@ -214,8 +220,7 @@ class ModelState(ModelStateBase):
 
     if self._combined_model_type == 'supercombo':
       model_output = raw_outputs.numpy().flatten()
-      if not np.all(np.isfinite(model_output)):
-        raise RuntimeError("model output not finite")
+      _check_finite_model_output(model_output)
       sliced = {k: model_output[np.newaxis, v] for k, v in self.vision_output_slices.items()}
       outputs = self.parser.parse_outputs(sliced)
       if 'prev_feat' in self.numpy_inputs and 'hidden_state' in self.vision_output_slices:
@@ -223,6 +228,7 @@ class ModelState(ModelStateBase):
           model_output[self.vision_output_slices['hidden_state']]
     else:
       vision_output = raw_outputs[0].numpy().flatten()
+      _check_finite_model_output(vision_output)
       vision_sliced = {k: vision_output[np.newaxis, v] for k, v in self.vision_output_slices.items()}
       outputs = self.parser.parse_vision_outputs(vision_sliced)
 
@@ -232,6 +238,7 @@ class ModelState(ModelStateBase):
 
       for i, policy_slices in enumerate(self._policy_slices_list):
         policy_output = raw_outputs[i + 1].numpy().flatten()
+        _check_finite_model_output(policy_output)
         policy_sliced = {k: policy_output[np.newaxis, v] for k, v in policy_slices.items()}
         parsed = self.parser.parse_policy_outputs(policy_sliced)
         if 'off' in self._policy_keys[i] and self._has_on_policy:
@@ -243,6 +250,8 @@ class ModelState(ModelStateBase):
 
       if 'planplus' in outputs and 'plan' in outputs:
         outputs['plan'] = outputs['plan'] + outputs['planplus']
+
+    _check_finite_model_output(outputs)
 
     if 'desired_curvature' in outputs and 'prev_desired_curv' in self.numpy_inputs:
       buf = self.numpy_inputs['prev_desired_curv']
