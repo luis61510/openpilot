@@ -9,6 +9,14 @@
 8、将 红绿灯ui，修改为1个红绿灯显示状态。
 
 11月25号
-9、AMD GPU 等待超时	改为 AMDDevice.wait_timeout_ms = 3000
-10、实时调度时机	将 config_realtime_process(7, 54) 移到模型加载和预热完成之后
-11、大模型缓存预热	扩展 Offroad 预热进程，支持检查并预热 Chestnut AMD 模型缓存
+基于大模型性能的修改：
+1、AMD GPU 等待超时	改为 AMDDevice.wait_timeout_ms = 3000
+2、实时调度时机	将 config_realtime_process(7, 54) 移到模型加载和预热完成之后
+3、大模型缓存预热	扩展 Offroad 预热进程，支持检查并预热 Chestnut AMD 模型缓存
+
+4、修复问题1:split / multi-policy 大模型输出的 NaN、Inf 检查
+5、修复问题2:modelV2 旧数据继续被使用
+6、修复问题3:大模型运行时故障后无法自动恢复，已增加自动恢复机制
+7、修复问题4:预热子进程超时保护
+8、修复问题5:大模型加载线程生命周期
+9、修复问题6:模型选择代码默认使用 bundle 的第一个模型
