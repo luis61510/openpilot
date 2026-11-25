@@ -45,7 +45,7 @@ from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.modeld_v2.helpers import load_compatible_model
 from openpilot.sunnypilot.modeld_v2.frame_fusion import fused_with_warp
 from openpilot.sunnypilot.modeld_v2.model_adapters import get_model_adapter
-from openpilot.sunnypilot.models.helpers import get_active_bundle
+from openpilot.sunnypilot.models.helpers import get_active_bundle, get_driving_model
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
@@ -65,8 +65,11 @@ def _find_driving_pkl(bundle):
   from openpilot.common.hardware.hw import Paths
   model_root = Paths.model_root()
 
-  pkl_name = bundle.models[0].artifact.fileName
-  pkl_path = os.path.join(model_root, pkl_name)
+  driving_model = get_driving_model(bundle)
+  if driving_model is None:
+    cloudlog.error("model bundle contains no supercombo driving model")
+    return None
+  pkl_path = os.path.join(model_root, driving_model.artifact.fileName)
   if _pkl_exists(pkl_path):
     return pkl_path
   return None
