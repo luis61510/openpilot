@@ -12,13 +12,14 @@ from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigConfirmatio
 from openpilot.selfdrive.ui.mici.widgets.pairing_dialog import PairingDialog
 from openpilot.selfdrive.ui.mici.onroad.cabin_camera_dialog import CabinCameraDialog
 from openpilot.selfdrive.ui.mici.layouts.onboarding import TrainingGuide, TermsPage
-from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
+from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, TextAlignment
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets import Widget
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets.html_render import HtmlRenderer
 from openpilot.system.athena.registration import UNREGISTERED_DONGLE_ID
+from openpilot.system.hardware.chestnut.status import GPU_TEMP_LIMIT, MEMORY_TEMP_LIMIT, TEMP_HYSTERESIS
 
 
 class ReviewTermsPage(TermsPage, NavScroller):
@@ -126,15 +127,25 @@ class DeviceInfoLayoutMici(Widget):
 class ChestnutGpuInfoLayout(Widget):
   """Live Chestnut eGPU telemetry shown in Device settings."""
 
+  NORMAL_FONT_SIZE = 27
+  ALERT_FONT_SIZE = NORMAL_FONT_SIZE * 2
+
   def __init__(self):
     super().__init__()
-    self.set_rect(rl.Rectangle(0, 0, 360, 350))
+    self.set_rect(rl.Rectangle(0, 0, 360, 400))
     self._title = UnifiedLabel("Chestnut eGPU monitor", 38, max_width=340, font_weight=FontWeight.DISPLAY, wrap_text=False)
     self._status = UnifiedLabel("Waiting for Chestnut...", 27, max_width=340, font_weight=FontWeight.ROMAN, wrap_text=False)
-    self._rows = [
-      UnifiedLabel("", 27, max_width=340, font_weight=FontWeight.ROMAN, wrap_text=False)
+    self._metric_labels = [
+      UnifiedLabel("", self.NORMAL_FONT_SIZE, max_width=175, font_weight=FontWeight.ROMAN, wrap_text=False)
       for _ in range(7)
     ]
+    self._metric_values = [
+      UnifiedLabel("", self.NORMAL_FONT_SIZE, max_width=165, alignment=TextAlignment.RIGHT,
+                   font_weight=FontWeight.ROMAN, wrap_text=False)
+      for _ in range(7)
+    ]
+    self._gpu_overheated = False
+    self._memory_overheated = False
 
   def _render(self, _):
     x = self._rect.x + 20
@@ -150,27 +161,54 @@ class ChestnutGpuInfoLayout(Widget):
     if not ui_state.chestnut_present:
       self._status.set_text("Chestnut eGPU not detected")
       rows = []
+      self._gpu_overheated = False
+      self._memory_overheated = False
     elif not telemetry_valid:
       self._status.set_text("GPU telemetry unavailable - activate the Chestnut big model")
       rows = []
+      self._gpu_overheated = False
+      self._memory_overheated = False
     else:
       self._status.set_text("Live GPU telemetry")
+
+      # Match ChestnutStatus temperature thresholds and 5°C recovery hysteresis.
+      gpu_limit = GPU_TEMP_LIMIT - (TEMP_HYSTERESIS if self._gpu_overheated else 0.)
+      memory_limit = MEMORY_TEMP_LIMIT - (TEMP_HYSTERESIS if self._memory_overheated else 0.)
+      self._gpu_overheated = chestnut.tempC >= gpu_limit
+      self._memory_overheated = chestnut.memoryTempC >= memory_limit
+
       rows = [
-        f"GPU core temperature: {chestnut.tempC:.0f} °C",
-        f"VRAM temperature: {chestnut.memoryTempC:.0f} °C",
-        f"GPU utilization: {chestnut.gpuUsagePercent:d} %",
-        f"GPU clock: {chestnut.gpuClockMhz:d} MHz",
-        f"Power draw: {chestnut.powerDrawW:.0f} / {chestnut.powerLimitW:.0f} W",
-        f"Fan speed: {chestnut.fanSpeedRpm:d} RPM",
-        f"12V rail: {chestnut.supplyVoltage / 1000:.1f} V, {chestnut.supplyCurrent / 1000:.1f} A",
+        ("GPU core temp", f"{chestnut.tempC:.0f}°C", self._gpu_overheated),
+        ("VRAM temp", f"{chestnut.memoryTempC:.0f}°C", self._memory_overheated),
+        ("GPU usage", f"{chestnut.gpuUsagePercent:d}%", False),
+        ("GPU clock", f"{chestnut.gpuClockMhz:d}MHz", False),
+        ("Power draw", f"{chestnut.powerDrawW:.0f}/{chestnut.powerLimitW:.0f}W", False),
+        ("Fan speed", f"{chestnut.fanSpeedRpm:d}RPM", False),
+        ("12V rail", f"{chestnut.supplyVoltage / 1000:.1f}V {chestnut.supplyCurrent / 1000:.1f}A", False),
       ]
 
     self._status.set_position(x, y + 48)
     self._status.render()
-    for i, label in enumerate(self._rows):
-      label.set_text(rows[i] if i < len(rows) else "")
-      label.set_position(x, y + 92 + i * 34)
-      label.render()
+
+    row_y = y + 92
+    for i, (name_label, value_label) in enumerate(zip(self._metric_labels, self._metric_values, strict=True)):
+      if i < len(rows):
+        name, value, alert = rows[i]
+        font_size = self.ALERT_FONT_SIZE if alert else self.NORMAL_FONT_SIZE
+        name_label.set_text(name)
+        value_label.set_text(value)
+        value_label.set_font_size(font_size)
+        value_label.set_text_color(rl.RED if alert else rl.WHITE)
+        name_label.set_position(x, row_y)
+        value_label.set_position(x + 175, row_y)
+        name_label.render()
+        value_label.render()
+        row_y += max(34, font_size + 4)
+      else:
+        name_label.set_text("")
+        value_label.set_text("")
+        value_label.set_font_size(self.NORMAL_FONT_SIZE)
+        value_label.set_text_color(rl.WHITE)
 
 
 class PairBigButton(BigButton):
