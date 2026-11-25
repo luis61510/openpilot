@@ -340,42 +340,44 @@ def main(demo=False):
   model = None
   chestnut_initial_load_timed_out = False
   initial_big_loader = None
+  initial_big_load_result = None
   if CHESTNUT:
-    # Retry failed big-model loads in this process. A timed-out loader thread cannot be
-    # safely cancelled, so never start a second GPU load while that thread is still alive.
+    # Python threads cannot be safely cancelled. Keep explicit ownership of a timed-out
+    # loader and never start another AMD load until it exits; discard any late result then.
     max_big_model_attempts = 2
     for attempt in range(1, max_big_model_attempts + 1):
-      big_model = None
-      big_error = []
+      big_load_result = {}
 
-      def load_big():
-        nonlocal big_model
+      def load_big(result):
         try:
           _wait_for_chestnut()
-          big_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
+          result["model"] = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
         except Exception as e:
-          big_error.append(e)
+          result["error"] = repr(e)
           cloudlog.exception("chestnut load failed (attempt %d)", attempt)
 
-      loader = threading.Thread(target=load_big, daemon=True, name=f"chestnut-model-loader-{attempt}")
+      loader = threading.Thread(target=load_big, args=(big_load_result,), daemon=True,
+                                name=f"chestnut-model-loader-{attempt}")
       loader.start()
       loader.join(BIG_MODEL_TIMEOUT)
 
       if loader.is_alive():
         chestnut_initial_load_timed_out = True
         initial_big_loader = loader
+        initial_big_load_result = big_load_result
         cloudlog.error("chestnut load timed out after %ss; keeping small model available and not starting another GPU loader",
                        BIG_MODEL_TIMEOUT)
         break
 
+      big_model = big_load_result.get("model")
       if big_model is not None:
         model = big_model
         cloudlog.info("chestnut model loaded on attempt %d/%d", attempt, max_big_model_attempts)
         break
 
       if attempt < max_big_model_attempts:
-        cloudlog.warning("retrying chestnut model load in the same modeld process (%d/%d)",
-                         attempt + 1, max_big_model_attempts)
+        cloudlog.warning("retrying chestnut model load in the same modeld process (%d/%d): %s",
+                         attempt + 1, max_big_model_attempts, big_load_result.get("error", "unknown error"))
         time.sleep(1.0)
 
     params.put_bool("ChestnutActive", model is not None)
@@ -475,11 +477,16 @@ def main(demo=False):
 
     sm.update(0)
     if initial_big_loader is not None and not initial_big_loader.is_alive():
+      # A timed-out loader may have completed after startup fell back to QCOM. Drop
+      # its late model reference before allowing any subsequent AMD load attempt.
+      if initial_big_load_result is not None:
+        initial_big_load_result.clear()
+        initial_big_load_result = None
       initial_big_loader = None
       big_model = None
       chestnut_recovery_disabled = False
       chestnut_recovery_next_attempt = time.monotonic() + 30.0
-      cloudlog.info("timed-out startup AMD loader exited; guarded recovery retries are now enabled")
+      cloudlog.info("timed-out startup AMD loader exited; late result released and guarded recovery retries are now enabled")
 
     # Recover the AMD model only while the vehicle is stationary and all openpilot
     # actuators are disengaged. Model loading runs off the model frame loop; model
