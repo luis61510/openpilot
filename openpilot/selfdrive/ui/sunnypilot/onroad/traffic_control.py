@@ -27,9 +27,9 @@ CONTROL_OUTLINE = rl.Color(64, 156, 255, 255)
 
 def traffic_card_rect(rect: rl.Rectangle, compact: bool = False) -> rl.Rectangle:
   if compact:
-    # Anchor the compact lamp at the upper-left of the Mici HUD.
-    # Keep clear of the driver-state icon and the longitudinal indicator below.
-    return rl.Rectangle(rect.x + 84, rect.y + 8, 32, 64)
+    # Place the lamp at the far upper-left, immediately below the 60px driver-state icon.
+    # Keep a 2px vertical gap and leave the longitudinal indicator untouched.
+    return rl.Rectangle(rect.x + 8, rect.y + 72, 40, 40)
   return rl.Rectangle(
     rect.x + 46.0,
     rect.y + UI_CONFIG.header_height + TRAFFIC_CARD_TOP_OFFSET,
@@ -172,9 +172,8 @@ class TrafficControlRenderer(Widget):
     # Main HUD traffic indicator: one circular lamp instead of a vertical
     # three-lamp traffic-light housing.
     if self.compact:
-      # Match the compact traffic lamp to the larger green status indicator
-      # on the right side of the Mici display, keeping the same center point.
-      housing = rl.Rectangle(icon.x - 4, icon.y + 12, 40, 40)
+      # Keep the 40px circular housing at the upper-left position returned above.
+      housing = rl.Rectangle(icon.x, icon.y, 40, 40)
       radius = 16.0
       outline_width = 1.5
     else:
