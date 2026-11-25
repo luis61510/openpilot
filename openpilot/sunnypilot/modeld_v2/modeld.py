@@ -282,12 +282,12 @@ def main(demo=False):
 
   cloudlog.bind(daemon=PROCESS_NAME)
   setproctitle(PROCESS_NAME)
-  config_realtime_process(7, 54)
 
   CHESTNUT = (_find_driving_pkl(get_active_bundle(chestnut=True)) is not None
               and (chestnut_present() or cable_connected()))
   if CHESTNUT:
-    os.environ['HCQDEV_WAIT_TIMEOUT_MS'] = '3000'
+    from tinygrad.runtime.ops_amd import AMDDevice
+    AMDDevice.wait_timeout_ms = 3000
 
   params = Params()
   params.put_bool("ChestnutLoading", CHESTNUT)
@@ -364,6 +364,10 @@ def main(demo=False):
   params.put_bool("ChestnutLoading", False)
   assert model is not None
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
+
+  # Keep model initialization off the real-time scheduling path. Set priority
+  # only after the selected model and its warmup have completed successfully.
+  config_realtime_process(7, 54)
 
   # messaging
   pub_socks = ["modelV2", "drivingModelData", "cameraOdometry", "modelDataV2SP"] + (["chestnutGpuState"] if CHESTNUT else [])
