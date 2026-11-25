@@ -477,6 +477,9 @@ def main(demo=False):
     if initial_big_loader is not None and not initial_big_loader.is_alive():
       initial_big_loader = None
       big_model = None
+      chestnut_recovery_disabled = False
+      chestnut_recovery_next_attempt = time.monotonic() + 30.0
+      cloudlog.info("timed-out startup AMD loader exited; guarded recovery retries are now enabled")
 
     # Recover the AMD model only while the vehicle is stationary and all openpilot
     # actuators are disengaged. Model loading runs off the model frame loop; model
@@ -511,6 +514,7 @@ def main(demo=False):
         chestnut_recovery_candidate = None
         model.lat_delay = get_lat_delay(params, sm["lateralDelay"].lateralDelay)
         model.PLANPLUS_CONTROL = params.get("PlanplusControl", return_default=True)
+        long_delay = CP.longitudinalActuatorDelay + model.LONG_SMOOTH_SECONDS
         params.put_bool("ChestnutActive", True)
         params.put_bool("ChestnutLoading", False)
         if chestnut_state is not None:
