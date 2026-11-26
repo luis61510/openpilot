@@ -431,12 +431,12 @@ def main(demo=False):
   big_model = None
   params.put_bool("ChestnutLoading", False)
   assert model is not None
-  active_bundle = get_active_bundle(chestnut=model.chestnut)
+  active_bundle = get_active_bundle(chestnut=model._selection_chestnut)
   active_ref = active_bundle.ref if active_bundle is not None else None
   if active_ref != model.selected_bundle_ref:
     raise RuntimeError(f"loaded model identity does not match active bundle: "
                        f"{model.selected_bundle_ref!r} != {active_ref!r}")
-  source = "chestnut" if model.chestnut else "qcom"
+  source = "chestnut" if model._selection_chestnut else "qcom"
   params.put("ModelRunnerLoadedIdentity",
              f"{source}:{active_ref or 'bundled'}:{model.loaded_artifact}", block=True)
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
