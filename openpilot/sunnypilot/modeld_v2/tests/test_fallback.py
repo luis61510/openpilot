@@ -70,11 +70,15 @@ class TestFallback(OpenpilotTestCase):
     monkeypatch.setattr(hw.Paths, 'model_root', staticmethod(lambda: str(tmp_path)))
     big_bundle = DummyBundle(models=[DummyModel('supercombo', lebowski_file)])
     small_bundle = DummyBundle(models=[DummyModel('supercombo', tsfdo_file)])
+    chunked_bundle = DummyBundle(models=[DummyModel('chunked', 'driving_chunked.pkl')])
+    (tmp_path / 'driving_chunked.pkl').write_bytes(b'chunked-driving-artifact')
     big_pkl = modeld_module._find_driving_pkl(big_bundle)
     small_pkl = modeld_module._find_driving_pkl(small_bundle)
+    chunked_pkl = modeld_module._find_driving_pkl(chunked_bundle)
 
     assert big_pkl is not None and lebowski_file in big_pkl
     assert small_pkl is not None and tsfdo_file in small_pkl
+    assert chunked_pkl is not None and 'driving_chunked.pkl' in chunked_pkl
 
   def test_download_models_and_init_modelstate_fallback(self, tmp_path, monkeypatch):
     monkeypatch.setattr(hw.Paths, 'model_root', staticmethod(lambda: str(tmp_path)))
