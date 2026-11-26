@@ -39,8 +39,11 @@ class TestFallback(OpenpilotTestCase):
     driving = SimpleNamespace(type=ModelManager.Model.Type.supercombo, artifact=SimpleNamespace(fileName="driving.pkl"))
     bundle = SimpleNamespace(models=[vision, policy, driving])
 
+    chunked = SimpleNamespace(type=ModelManager.Model.Type.chunked, artifact=SimpleNamespace(fileName="chunked-driving.pkl"))
     assert get_driving_model(bundle) is driving
+    assert get_driving_model(SimpleNamespace(models=[chunked])) is chunked
     assert get_driving_model(SimpleNamespace(models=[vision, policy])) is None
+    assert get_driving_model(SimpleNamespace(models=[vision])) is None
     assert get_driving_model(None) is None
 
   def test_chestnut_recovery_requires_stopped_disengaged_vehicle(self):
