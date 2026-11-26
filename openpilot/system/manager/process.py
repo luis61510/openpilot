@@ -142,13 +142,15 @@ class ManagerProcess(ABC):
 
 
 class NativeProcess(ManagerProcess):
-  def __init__(self, name, cwd, cmdline, should_run, enabled=True, sigkill=False):
+  def __init__(self, name, cwd, cmdline, should_run, enabled=True, sigkill=False, restart_if_crash=False):
     self.name = name
     self.cwd = cwd
     self.cmdline = cmdline
     self.should_run = should_run
     self.enabled = enabled
     self.sigkill = sigkill
+    self.restart_if_crash = restart_if_crash
+    self.last_crash_restart = float("-inf")
     self.launcher = nativelauncher
 
   def start(self) -> None:
