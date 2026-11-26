@@ -102,7 +102,7 @@ class ChestnutGpuState:
         smu._send_msg(smu.smu_mod.PPSMC_MSG_TransferTableSmu2Dram, smu.smu_mod.TABLE_SMU_METRICS, timeout=100)
         metrics_buf = bytearray(smu.adev.vram.view(smu.driver_table_paddr, ctypes.sizeof(metrics_t))[:])
         metrics = metrics_t.from_buffer(metrics_buf).SmuMetrics
-        self.metrics = {'tempC': metrics.AvgTemperature[smu.smu_mod.TEMP_HOTSPOT],
+        self.metrics = {'tempC': metrics.AvgTemperature[smu.smu_mod.TEMP_EDGE],
                         'memoryTempC': metrics.AvgTemperature[smu.smu_mod.TEMP_MEM],
                         'powerDrawW': metrics.AverageSocketPower,
                         'powerLimitW': self.power_limit,

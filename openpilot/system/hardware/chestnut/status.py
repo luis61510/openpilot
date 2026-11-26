@@ -8,7 +8,8 @@ from openpilot.sunnypilot.models.helpers import selected_chestnut_compiled
 
 CHESTNUT_RELEASE_BRANCHES = ("release-chestnut", "release-chestnut-staging", "nightly-chestnut")
 CHESTNUT_POWERED_VOLTAGE = 5000
-GPU_TEMP_LIMIT = 100.
+# Edge temperature warning threshold; TEMP_EDGE is lower than hotspot temperature.
+GPU_TEMP_LIMIT = 90.
 MEMORY_TEMP_LIMIT = 95.
 TEMP_HYSTERESIS = 5.
 

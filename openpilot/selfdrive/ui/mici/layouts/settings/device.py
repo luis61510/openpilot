@@ -178,7 +178,7 @@ class ChestnutGpuInfoLayout(Widget):
       self._memory_overheated = chestnut.memoryTempC >= memory_limit
 
       rows = [
-        ("GPU core temp", f"{chestnut.tempC:.0f}°C", self._gpu_overheated),
+        ("GPU edge temp", f"{chestnut.tempC:.0f}°C", self._gpu_overheated),
         ("VRAM temp", f"{chestnut.memoryTempC:.0f}°C", self._memory_overheated),
         ("GPU usage", f"{chestnut.gpuUsagePercent:d}%", False),
         ("GPU clock", f"{chestnut.gpuClockMhz:d}MHz", False),
