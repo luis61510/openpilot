@@ -247,11 +247,17 @@ def get_active_model_runner(params: Params | None = None, force_check: bool = Fa
   return runner_type
 
 
+DRIVING_MODEL_TYPES = (
+  ModelManager.Model.Type.supercombo,
+  ModelManager.Model.Type.chunked,
+)
+
+
 def get_driving_model(bundle):
-  """Return the bundle's driving model by declared type, never by list position."""
+  """Return the bundle's driving model by an explicitly supported driving type."""
   if bundle is None:
     return None
-  return next((model for model in bundle.models if model.type == ModelManager.Model.Type.supercombo), None)
+  return next((model for model in bundle.models if model.type in DRIVING_MODEL_TYPES), None)
 
 
 def _get_model():
