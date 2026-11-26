@@ -50,6 +50,13 @@ def nativelauncher(pargs: list[str], cwd: str, name: str) -> None:
   os.execvp(pargs[0], pargs)
 
 
+def get_crash_restart_delay(crash_count: int) -> float:
+  """Exponential restart delay, with the first recovery attempt immediate."""
+  if crash_count <= 0:
+    return 0.0
+  return min(5.0 * (2 ** (crash_count - 1)), 300.0)
+
+
 def join_process(process: Process, timeout: float) -> None:
   # Process().join(timeout) will hang due to a python 3 bug: https://bugs.python.org/issue28382
   # We have to poll the exitcode instead
@@ -59,7 +66,8 @@ def join_process(process: Process, timeout: float) -> None:
 
 
 class ManagerProcess(ABC):
-  CRASH_RESTART_BACKOFF = 5.0
+  CRASH_RESTART_STABLE_TIME = 300.0
+  CRASH_RESTART_MAX_BACKOFF = 300.0
   daemon = False
   sigkill = False
   should_run: Callable[[bool, Params, car.CarParams], bool]
@@ -69,6 +77,8 @@ class ManagerProcess(ABC):
   shutting_down = False
   restart_if_crash = False
   last_crash_restart = float("-inf")
+  crash_count = 0
+  last_start_time = float("-inf")
 
   @abstractmethod
   def start(self) -> None:
@@ -76,12 +86,18 @@ class ManagerProcess(ABC):
 
   def restart(self) -> None:
     now = time.monotonic()
-    if now - self.last_crash_restart < self.CRASH_RESTART_BACKOFF:
+    # A long healthy run clears the consecutive-crash history.
+    if now - self.last_start_time >= self.CRASH_RESTART_STABLE_TIME:
+      self.crash_count = 0
+    delay = get_crash_restart_delay(self.crash_count)
+    if now - self.last_crash_restart < delay:
       return
-    cloudlog.error(f"restarting {self.name} after crash")
+    cloudlog.error("restarting %s after crash (consecutive failures: %d, next backoff: %.0fs)",
+                   self.name, self.crash_count + 1, get_crash_restart_delay(self.crash_count + 1))
     self.stop()
     self.start()
     self.last_crash_restart = now
+    self.crash_count += 1
 
   def stop(self, retry: bool = True, block: bool = True, sig: signal.Signals | None = None) -> int | None:
     if self.proc is None:
@@ -151,6 +167,8 @@ class NativeProcess(ManagerProcess):
     self.sigkill = sigkill
     self.restart_if_crash = restart_if_crash
     self.last_crash_restart = float("-inf")
+    self.crash_count = 0
+    self.last_start_time = float("-inf")
     self.launcher = nativelauncher
 
   def start(self) -> None:
@@ -165,6 +183,7 @@ class NativeProcess(ManagerProcess):
     cloudlog.info(f"starting process {self.name}")
     self.proc = Process(name=self.name, target=self.launcher, args=(self.cmdline, cwd, self.name))
     self.proc.start()
+    self.last_start_time = time.monotonic()
     self.shutting_down = False
 
 
@@ -178,6 +197,8 @@ class PythonProcess(ManagerProcess):
     self.launcher = launcher
     self.restart_if_crash = restart_if_crash
     self.last_crash_restart = float("-inf")
+    self.crash_count = 0
+    self.last_start_time = float("-inf")
 
   def start(self) -> None:
     # In case we only tried a non blocking stop we need to stop it before restarting
@@ -190,6 +211,7 @@ class PythonProcess(ManagerProcess):
     cloudlog.info(f"starting python {self.module}")
     self.proc = Process(name=self.name, target=self.launcher, args=(self.module, self.name))
     self.proc.start()
+    self.last_start_time = time.monotonic()
     self.shutting_down = False
 
 
