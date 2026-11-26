@@ -247,6 +247,11 @@ def get_active_model_runner(params: Params | None = None, force_check: bool = Fa
   return runner_type
 
 
+def refresh_active_model_runner(params: Params | None = None) -> int:
+  """Synchronize the cached runner immediately after an active-bundle mutation."""
+  return get_active_model_runner(params, force_check=True)
+
+
 DRIVING_MODEL_TYPES = (
   ModelManager.Model.Type.supercombo,
   ModelManager.Model.Type.chunked,
