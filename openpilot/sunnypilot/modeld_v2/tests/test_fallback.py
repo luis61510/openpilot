@@ -22,8 +22,10 @@ tmp_path = tests_helpers.tmp_path
 
 
 class _FakeSubMaster:
-  def __init__(self, car_state, car_control, seen=True):
+  def __init__(self, car_state, car_control, seen=True, alive=True, valid=True):
     self.seen = {'carState': seen, 'carControl': seen}
+    self.alive = alive if isinstance(alive, dict) else {'carState': alive, 'carControl': alive}
+    self.valid = valid if isinstance(valid, dict) else {'carState': valid, 'carControl': valid}
     self.data = {'carState': car_state, 'carControl': car_control}
 
   def __getitem__(self, key):
@@ -60,6 +62,17 @@ class TestFallback(OpenpilotTestCase):
     assert not modeld_module._can_recover_chestnut(_FakeSubMaster(stopped, engaged))
 
     assert not modeld_module._can_recover_chestnut(_FakeSubMaster(stopped, disengaged, seen=False))
+
+  def test_chestnut_recovery_rejects_stale_or_invalid_vehicle_state(self):
+    from types import SimpleNamespace
+
+    stopped = SimpleNamespace(standstill=True, vEgo=0.0)
+    disengaged = SimpleNamespace(enabled=False, latActive=False, longActive=False)
+    # A message may have been seen previously but is no longer live.
+    assert not modeld_module._can_recover_chestnut(
+      _FakeSubMaster(stopped, disengaged, alive={'carState': False, 'carControl': True}))
+    assert not modeld_module._can_recover_chestnut(
+      _FakeSubMaster(stopped, disengaged, valid={'carState': True, 'carControl': False}))
 
   def test_find_dual_model_in_bundle(self, tmp_path, monkeypatch):
     lebowski_file = 'driving_lebowski.pkl'
