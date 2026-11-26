@@ -117,7 +117,8 @@ class ModelState(ModelStateBase):
     ModelStateBase.__init__(self)
 
     env_pkl = os.environ.get('COMBINED_MODEL_PKL')
-    if env_pkl and os.path.exists(env_pkl):
+    self._uses_override = bool(env_pkl and os.path.exists(env_pkl))
+    if self._uses_override:
       model_bundle = None
     else:
       model_bundle = get_active_bundle(chestnut=chestnut)
@@ -172,11 +173,12 @@ class ModelState(ModelStateBase):
       self.loaded_artifact = os.path.basename(default_pkl)
       self.warmup()
 
-    current_bundle = get_active_bundle(chestnut=self._selection_chestnut)
-    current_ref = current_bundle.ref if current_bundle is not None else None
-    if current_ref != self.selected_bundle_ref:
-      raise RuntimeError(f"active model bundle changed during initialization: "
-                         f"{self.selected_bundle_ref!r} -> {current_ref!r}")
+    if not self._uses_override:
+      current_bundle = get_active_bundle(chestnut=self._selection_chestnut)
+      current_ref = current_bundle.ref if current_bundle is not None else None
+      if current_ref != self.selected_bundle_ref:
+        raise RuntimeError(f"active model bundle changed during initialization: "
+                           f"{self.selected_bundle_ref!r} -> {current_ref!r}")
 
   def _init_combined(self, pkl_path, cam_w, cam_h, bundle):
     cloudlog.warning(f"loading combined pkl: {pkl_path}")
@@ -431,14 +433,15 @@ def main(demo=False):
   big_model = None
   params.put_bool("ChestnutLoading", False)
   assert model is not None
-  active_bundle = get_active_bundle(chestnut=model._selection_chestnut)
+  active_bundle = get_active_bundle(chestnut=model._selection_chestnut) if not model._uses_override else None
   active_ref = active_bundle.ref if active_bundle is not None else None
-  if active_ref != model.selected_bundle_ref:
+  if not model._uses_override and active_ref != model.selected_bundle_ref:
     raise RuntimeError(f"loaded model identity does not match active bundle: "
                        f"{model.selected_bundle_ref!r} != {active_ref!r}")
   source = "chestnut" if model._selection_chestnut else "qcom"
+  identity_ref = active_ref or ("override" if model._uses_override else "bundled")
   params.put("ModelRunnerLoadedIdentity",
-             f"{source}:{active_ref or 'bundled'}:{model.loaded_artifact}", block=True)
+             f"{source}:{identity_ref}:{model.loaded_artifact}", block=True)
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
   # Keep model initialization off the real-time scheduling path. Set priority
