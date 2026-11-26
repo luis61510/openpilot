@@ -19,7 +19,6 @@ from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets.html_render import HtmlRenderer
 from openpilot.system.athena.registration import UNREGISTERED_DONGLE_ID
-from openpilot.system.hardware.chestnut.status import GPU_TEMP_LIMIT, MEMORY_TEMP_LIMIT, TEMP_HYSTERESIS
 
 
 class ReviewTermsPage(TermsPage, NavScroller):
@@ -144,8 +143,6 @@ class ChestnutGpuInfoLayout(Widget):
                    font_weight=FontWeight.ROMAN, wrap_text=False)
       for _ in range(7)
     ]
-    self._gpu_overheated = False
-    self._memory_overheated = False
 
   def _render(self, _):
     x = self._rect.x + 20
@@ -161,25 +158,15 @@ class ChestnutGpuInfoLayout(Widget):
     if not ui_state.chestnut_present:
       self._status.set_text("Chestnut eGPU not detected")
       rows = []
-      self._gpu_overheated = False
-      self._memory_overheated = False
     elif not telemetry_valid:
       self._status.set_text("GPU telemetry unavailable - activate the Chestnut big model")
       rows = []
-      self._gpu_overheated = False
-      self._memory_overheated = False
     else:
       self._status.set_text("Live GPU telemetry")
 
-      # Match ChestnutStatus temperature thresholds and 5°C recovery hysteresis.
-      gpu_limit = GPU_TEMP_LIMIT - (TEMP_HYSTERESIS if self._gpu_overheated else 0.)
-      memory_limit = MEMORY_TEMP_LIMIT - (TEMP_HYSTERESIS if self._memory_overheated else 0.)
-      self._gpu_overheated = chestnut.tempC >= gpu_limit
-      self._memory_overheated = chestnut.memoryTempC >= memory_limit
-
       rows = [
-        ("GPU edge temp", f"{chestnut.tempC:.0f}°C", self._gpu_overheated),
-        ("VRAM temp", f"{chestnut.memoryTempC:.0f}°C", self._memory_overheated),
+        ("GPU edge temp", f"{chestnut.tempC:.0f}°C", False),
+        ("VRAM temp", f"{chestnut.memoryTempC:.0f}°C", False),
         ("GPU usage", f"{chestnut.gpuUsagePercent:d}%", False),
         ("GPU clock", f"{chestnut.gpuClockMhz:d}MHz", False),
         ("Power draw", f"{chestnut.powerDrawW:.0f}/{chestnut.powerLimitW:.0f}W", False),
