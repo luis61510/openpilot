@@ -204,10 +204,10 @@ class HudRenderer(Widget):
 
     # Each metric changes color independently when its threshold is exceeded.
     metrics = (
-      (f"{chestnut.tempC:.0f}°", chestnut.tempC > 80),
-      (f"{chestnut.memoryTempC:.0f}°", chestnut.memoryTempC > 80),
+      (f"{chestnut.tempC:.0f}°", chestnut.tempC > 75),
+      (f"{chestnut.memoryTempC:.0f}°", chestnut.memoryTempC > 87),
       (f"{chestnut.gpuUsagePercent:d}%", chestnut.gpuUsagePercent > 70),
-      (f"{chestnut.fanSpeedRpm:d}", chestnut.fanSpeedRpm > 1200),
+      (f"{chestnut.fanSpeedRpm:d}", chestnut.fanSpeedRpm > 1500),
     )
     # Render as a clean vertical stack at the far right, centered vertically.
     # Alert values double in size; normal values retain the original 23px font.
