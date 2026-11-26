@@ -23,7 +23,8 @@ from openpilot.common.hardware.hw import Paths
 from openpilot.cereal import messaging, custom
 from openpilot.sunnypilot.models.fetcher import ModelFetcher
 from openpilot.sunnypilot.models.helpers import (ACTIVE_BUNDLE_KEYS, get_active_bundle, get_selected_bundle,
-                                                  resolve_bundle_by_ref, validate_active_bundles, verify_file)
+                                                  refresh_active_model_runner, resolve_bundle_by_ref,
+                                                  validate_active_bundles, verify_file)
 
 # (connect, read) seconds. read is per-request inactivity, not a total cap
 DOWNLOAD_TIMEOUT = (30, 30)
@@ -560,6 +561,9 @@ class ModelManagerSP:
         raise DownloadCancelled("Download cancelled")
       self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.downloaded
       self.params.put(ACTIVE_BUNDLE_KEYS[source], model_bundle.to_dict(), block=True)
+      # Publish the runner type in the same activation transaction window so the
+      # process manager cannot observe a new bundle with a stale runner cache.
+      refresh_active_model_runner(self.params)
       self.active_bundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
 
 
