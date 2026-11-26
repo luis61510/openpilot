@@ -1,5 +1,7 @@
+import os
+
 from openpilot.common.test import OpenpilotTestCase
-from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+from openpilot.common.file_chunker import get_manifest_path
 from openpilot.sunnypilot.modeld_v2.helpers import artifact_size_mtime
 from openpilot.sunnypilot.modeld_v2.warmup import _finish_warmup_worker, _materialized_artifact
 
@@ -53,7 +55,6 @@ class TestWarmupWorker(OpenpilotTestCase):
     assert exitcode == -9
   def test_chunked_artifact_signature_and_materialization(self, tmp_path):
     artifact = str(tmp_path / "driving.pkl")
-    chunks = [get_chunk_name(artifact, i, 2) for i in range(2)]
     (tmp_path / ("driving.pkl.chunkmanifest")).write_text("2")
     (tmp_path / "driving.pkl.chunk01of02").write_bytes(b"model-part-")
     (tmp_path / "driving.pkl.chunk02of02").write_bytes(b"two")
@@ -62,7 +63,8 @@ class TestWarmupWorker(OpenpilotTestCase):
     assert size == len(b"model-part-two")
 
     with _materialized_artifact(artifact) as materialized:
-      assert open(materialized, "rb").read() == b"model-part-two"
-      stat = __import__("os").stat(materialized)
+      with open(materialized, "rb") as file:
+        assert file.read() == b"model-part-two"
+      stat = os.stat(materialized)
       assert stat.st_size == size
       assert stat.st_mtime_ns == mtime_ns
