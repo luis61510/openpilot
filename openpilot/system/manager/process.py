@@ -50,11 +50,16 @@ def nativelauncher(pargs: list[str], cwd: str, name: str) -> None:
   os.execvp(pargs[0], pargs)
 
 
+CRASH_RESTART_BASE_BACKOFF = 5.0
+CRASH_RESTART_MAX_BACKOFF = 300.0
+
+
 def get_crash_restart_delay(crash_count: int) -> float:
   """Exponential restart delay, with the first recovery attempt immediate."""
   if crash_count <= 0:
     return 0.0
-  return min(5.0 * (2 ** (crash_count - 1)), 300.0)
+  exponent = min(crash_count - 1, 6)  # avoid unbounded integer growth after prolonged failures
+  return min(CRASH_RESTART_BASE_BACKOFF * (2 ** exponent), CRASH_RESTART_MAX_BACKOFF)
 
 
 def join_process(process: Process, timeout: float) -> None:
@@ -67,7 +72,6 @@ def join_process(process: Process, timeout: float) -> None:
 
 class ManagerProcess(ABC):
   CRASH_RESTART_STABLE_TIME = 300.0
-  CRASH_RESTART_MAX_BACKOFF = 300.0
   daemon = False
   sigkill = False
   should_run: Callable[[bool, Params, car.CarParams], bool]
