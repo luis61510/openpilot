@@ -28,5 +28,6 @@ modeld_v2/modeld.py	小模型加载增加异常保护，避免大模型失败后
 modeld_v2/modeld.py	ChestnutActive 改为根据实际加载模型的 model.chestnut 判断
 test_fallback.py	增加 chunked 类型识别和实际 artifact 路径测试
 
-
+1、进程级崩溃自动恢复
+2、Runner 状态同步三层保护机制
 
