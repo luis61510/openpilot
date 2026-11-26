@@ -131,10 +131,24 @@ class ModelState(ModelStateBase):
     self.chestnut = chestnut
 
     pkl_path = _find_driving_pkl(model_bundle)
-    if pkl_path is None and not chestnut and model_bundle is None:
-      default_pkl = modeld_pkl_path(chestnut=False)
-      pkl_path = str(default_pkl) if _pkl_exists(default_pkl) else None
-    assert pkl_path is not None, f"No driving pkl found for {'chestnut' if chestnut else 'small model'} — all models must be compiled with compile_modeld.py"
+    if pkl_path is None:
+      # A selected bundle may be present but contain no usable driving artifact.
+      # Fall back to the locally bundled model rather than killing modeld_tinygrad.
+      for fallback_chestnut in ((True, False) if chestnut else (False,)):
+        default_pkl = modeld_pkl_path(chestnut=fallback_chestnut)
+        if _pkl_exists(default_pkl):
+          cloudlog.error("no usable %s driving artifact in the selected bundle; using bundled %s",
+                         "big" if fallback_chestnut else "small", default_pkl.name)
+          chestnut, pkl_path = fallback_chestnut, str(default_pkl)
+          model_bundle, self.generation = None, None
+          overrides = {}
+          self.LAT_SMOOTH_SECONDS = float(overrides.get("lat", ".0"))
+          self.LONG_SMOOTH_SECONDS = float(overrides.get("long", ".0"))
+          break
+    if pkl_path is None:
+      raise RuntimeError(f"No driving pkl found for {'chestnut' if chestnut else 'small model'} "
+                         "— selected and bundled driving artifacts are unavailable")
+    self.chestnut = chestnut
     self._init_combined(pkl_path, cam_w, cam_h, model_bundle)
     try:
       self.warmup()
@@ -383,11 +397,19 @@ def main(demo=False):
                          attempt + 1, max_big_model_attempts, big_load_result.get("error", "unknown error"))
         time.sleep(1.0)
 
-    params.put_bool("ChestnutActive", model is not None)
+    params.put_bool("ChestnutActive", model is not None and model.chestnut)
 
-  small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
+  small_model = None
+  if model is None or CHESTNUT:
+    try:
+      small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False)
+    except Exception:
+      cloudlog.exception("small model load failed")
   if model is None:
     model = small_model
+  if model is None:
+    params.put_bool("ChestnutLoading", False)
+    raise RuntimeError("no drivable model could be loaded; both selected and bundled model loading failed")
   # Do not retain a second reference to the AMD model after selecting the active model.
   big_model = None
   params.put_bool("ChestnutLoading", False)
