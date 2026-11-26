@@ -121,6 +121,12 @@ class ModelState(ModelStateBase):
       model_bundle = None
     else:
       model_bundle = get_active_bundle(chestnut=chestnut)
+    # Keep the selected bundle identity from the start of initialization. The
+    # active slot is checked again after model load + warmup to catch a selection
+    # change racing with initialization.
+    self._selection_chestnut = chestnut
+    self.selected_bundle_ref = model_bundle.ref if model_bundle is not None else None
+    self.loaded_artifact = None
     self.generation = model_bundle.generation if model_bundle is not None else None
     overrides = {override.key: override.value for override in model_bundle.overrides} if model_bundle else {}
 
@@ -149,6 +155,7 @@ class ModelState(ModelStateBase):
       raise RuntimeError(f"No driving pkl found for {'chestnut' if chestnut else 'small model'} "
                          "— selected and bundled driving artifacts are unavailable")
     self.chestnut = chestnut
+    self.loaded_artifact = os.path.basename(pkl_path)
     self._init_combined(pkl_path, cam_w, cam_h, model_bundle)
     try:
       self.warmup()
@@ -162,7 +169,14 @@ class ModelState(ModelStateBase):
       cloudlog.exception(f"{model_kind} model output invalid; falling back to bundled model")
       self.generation = None
       self._init_combined(default_pkl, cam_w, cam_h, None)
+      self.loaded_artifact = os.path.basename(default_pkl)
       self.warmup()
+
+    current_bundle = get_active_bundle(chestnut=self._selection_chestnut)
+    current_ref = current_bundle.ref if current_bundle is not None else None
+    if current_ref != self.selected_bundle_ref:
+      raise RuntimeError(f"active model bundle changed during initialization: "
+                         f"{self.selected_bundle_ref!r} -> {current_ref!r}")
 
   def _init_combined(self, pkl_path, cam_w, cam_h, bundle):
     cloudlog.warning(f"loading combined pkl: {pkl_path}")
@@ -325,6 +339,9 @@ def main(demo=False):
     AMDDevice.wait_timeout_ms = 3000
 
   params = Params()
+  # Clear the previous process' identity before loading. It is published again
+  # only after a model has loaded and passed its initialization checks.
+  params.remove("ModelRunnerLoadedIdentity")
   params.put_bool("ChestnutLoading", CHESTNUT)
   params.remove("ChestnutActive")
 
@@ -414,6 +431,14 @@ def main(demo=False):
   big_model = None
   params.put_bool("ChestnutLoading", False)
   assert model is not None
+  active_bundle = get_active_bundle(chestnut=model.chestnut)
+  active_ref = active_bundle.ref if active_bundle is not None else None
+  if active_ref != model.selected_bundle_ref:
+    raise RuntimeError(f"loaded model identity does not match active bundle: "
+                       f"{model.selected_bundle_ref!r} != {active_ref!r}")
+  source = "chestnut" if model.chestnut else "qcom"
+  params.put("ModelRunnerLoadedIdentity",
+             f"{source}:{active_ref or 'bundled'}:{model.loaded_artifact}", block=True)
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
   # Keep model initialization off the real-time scheduling path. Set priority
