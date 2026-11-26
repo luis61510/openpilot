@@ -97,11 +97,13 @@ def main():
       driving_model = get_driving_model(bundle)
       path = os.path.join(Paths.model_root(), driving_model.artifact.fileName) if driving_model else ""
 
-      if not path or not (os.path.isfile(path) or os.path.isfile(get_manifest_path(path))) or cache_is_fresh(path):
+      if not path or not (os.path.isfile(path) or os.path.isfile(get_manifest_path(path))):
         continue
 
       try:
         artifact_size, artifact_mtime_ns = artifact_size_mtime(path)
+        if cache_is_fresh(path):
+          continue
       except (OSError, ValueError) as e:
         cloudlog.warning(f"skipping {source} cache warmup for incomplete artifact {path}: {e}")
         continue
