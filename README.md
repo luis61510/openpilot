@@ -20,3 +20,13 @@
 7、修复问题4:预热子进程超时保护
 8、修复问题5:大模型加载线程生命周期
 9、修复问题6:模型选择代码默认使用 bundle 的第一个模型
+
+11月26号（主要解决大模型切换后，无法启动modeld_tinygrad无法启动的问题）
+models/helpers.py	同时识别 supercombo 和 chunked，让新目录中的大小模型都能找到驾驶模型
+modeld_v2/modeld.py	选中模型没有可用 artifact 时，尝试加载本地捆绑模型
+modeld_v2/modeld.py	小模型加载增加异常保护，避免大模型失败后小模型异常直接导致进程退出
+modeld_v2/modeld.py	ChestnutActive 改为根据实际加载模型的 model.chestnut 判断
+test_fallback.py	增加 chunked 类型识别和实际 artifact 路径测试
+
+
+
