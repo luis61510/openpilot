@@ -9,7 +9,7 @@ from opendbc.car.structs import car
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.common.params import Params
 import openpilot.system.manager.manager as manager
-from openpilot.system.manager.process import ensure_running
+from openpilot.system.manager.process import ensure_running, get_crash_restart_delay
 from openpilot.system.manager.process_config import managed_processes, procs
 from openpilot.common.hardware import HARDWARE
 
@@ -32,6 +32,11 @@ class TestManager(OpenpilotTestCase):
 
   def test_duplicate_procs(self):
     assert len(procs) == len(managed_processes), "Duplicate process names"
+
+  def test_crash_restart_backoff_grows_and_caps(self):
+    assert [get_crash_restart_delay(i) for i in range(7)] == [0.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0]
+    assert get_crash_restart_delay(8) == 300.0
+    assert get_crash_restart_delay(20) == 300.0
 
   def test_tinygrad_native_process_restarts_after_crash(self):
     proc = managed_processes["modeld_tinygrad"]
