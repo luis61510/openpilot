@@ -3,7 +3,7 @@
 2、修复模型缓存清理
 3、修复默认大模型 ref
 4、移植了 新版 load_model()  
-5、增加   Chestnut eGPU 温度与性能监控（显示核心温度、显存温度、占用率、风扇转速）
+5、增加   Chestnut eGPU 温度与性能监控（显示 普通核心平均温度、显存温度、占用率、风扇转速）
 6、增加   lead vehicle info TTC显示信息，仅显示前车距离参数。
 7、增加   dragpilot中的opview投屏功能。
 8、将 红绿灯ui，修改为1个红绿灯显示状态。
