@@ -82,8 +82,13 @@ def _check_finite_model_output(output) -> None:
 
 
 def _can_recover_chestnut(sm) -> bool:
-  if not sm.seen['carState'] or not sm.seen['carControl']:
-    return False
+  # `seen` only means a message was received at least once. Recovery must
+  # use current, live, valid vehicle state so stale standstill/disengaged
+  # values can never authorize an AMD model switch.
+  for service in ('carState', 'carControl'):
+    if not sm.seen[service] or not sm.alive[service] or not sm.valid[service]:
+      return False
+
   car_state = sm['carState']
   car_control = sm['carControl']
   return (car_state.standstill and abs(car_state.vEgo) < 0.1 and
