@@ -33,6 +33,10 @@ class TestManager(OpenpilotTestCase):
   def test_duplicate_procs(self):
     assert len(procs) == len(managed_processes), "Duplicate process names"
 
+  def test_tinygrad_native_process_restarts_after_crash(self):
+    proc = managed_processes["modeld_tinygrad"]
+    assert proc.restart_if_crash, "modeld_tinygrad must be restarted by manager after a crash"
+
   def test_blacklisted_procs(self):
     # TODO: ensure there are blacklisted procs until we have a dedicated test
     assert len(BLACKLIST_PROCS), "No blacklisted procs to test not_run"
