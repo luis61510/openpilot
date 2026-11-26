@@ -154,9 +154,25 @@ def _parts_digest(parts: dict) -> str:
   return digest.hexdigest()
 
 
+def artifact_size_mtime(path: str) -> tuple[int, int]:
+  """Return a stable size/mtime signature for a plain or chunked model artifact."""
+  try:
+    stat = os.stat(path)
+    return stat.st_size, stat.st_mtime_ns
+  except FileNotFoundError:
+    from openpilot.common.file_chunker import get_chunk_name, get_manifest_path
+    manifest = get_manifest_path(path)
+    manifest_stat = os.stat(manifest)
+    count = int(open(manifest, encoding="utf-8").read().strip())
+    if not 0 < count <= 1024:
+      raise ValueError(f"invalid chunk count for {path}: {count}")
+    stats = [os.stat(get_chunk_name(path, i, count)) for i in range(count)]
+    return sum(stat.st_size for stat in stats), max([manifest_stat.st_mtime_ns, *(stat.st_mtime_ns for stat in stats)])
+
+
 def _cache_key(path: str, device_map: dict | None, extra: str = "") -> bytes:
-  stat = os.stat(path)
-  return json.dumps({"format": MAGIC.decode(), "tinygrad": tinygrad_identity(), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
+  size, mtime_ns = artifact_size_mtime(path)
+  return json.dumps({"format": MAGIC.decode(), "tinygrad": tinygrad_identity(), "size": size, "mtime_ns": mtime_ns,
                      "extra": extra, "device_map": sorted((device_map or {}).items()),
                      "env": [os.environ.get(name, "") for name in RUNTIME_ENVIRONMENT]}).encode()
 
