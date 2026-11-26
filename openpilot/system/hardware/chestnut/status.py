@@ -9,8 +9,8 @@ from openpilot.sunnypilot.models.helpers import selected_chestnut_compiled
 CHESTNUT_RELEASE_BRANCHES = ("release-chestnut", "release-chestnut-staging", "nightly-chestnut")
 CHESTNUT_POWERED_VOLTAGE = 5000
 # Edge temperature warning threshold; TEMP_EDGE is lower than hotspot temperature.
-GPU_TEMP_LIMIT = 90.
-MEMORY_TEMP_LIMIT = 95.
+GPU_TEMP_LIMIT = 75.
+MEMORY_TEMP_LIMIT = 87.
 TEMP_HYSTERESIS = 5.
 
 
@@ -27,6 +27,8 @@ class ChestnutStatus:
     self.model_loading_seen = False
     self.model_attempted = False
     self.overheated = False
+    self.gpu_overheated = False
+    self.memory_overheated = False
     self.usb_seen = False
     self.usb_failed = False
 
@@ -76,9 +78,11 @@ class ChestnutStatus:
       self.power_restored = False
 
     if state is not None:
-      gpu_limit = GPU_TEMP_LIMIT - (TEMP_HYSTERESIS if self.overheated else 0.)
-      memory_limit = MEMORY_TEMP_LIMIT - (TEMP_HYSTERESIS if self.overheated else 0.)
-      self.overheated = state.tempC >= gpu_limit or state.memoryTempC >= memory_limit
+      gpu_limit = GPU_TEMP_LIMIT - (TEMP_HYSTERESIS if self.gpu_overheated else 0.)
+      memory_limit = MEMORY_TEMP_LIMIT - (TEMP_HYSTERESIS if self.memory_overheated else 0.)
+      self.gpu_overheated = state.tempC >= gpu_limit
+      self.memory_overheated = state.memoryTempC >= memory_limit
+      self.overheated = self.gpu_overheated or self.memory_overheated
 
     release = branch in CHESTNUT_RELEASE_BRANCHES
     missing = self.usb_failed or (offroad and release and time.monotonic() - self.started > 10. and len(detected) != 1)
