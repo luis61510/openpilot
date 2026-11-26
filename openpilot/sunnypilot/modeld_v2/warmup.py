@@ -3,8 +3,11 @@
 Offroad Tinygrad model cache warmup for QCOM and Chestnut AMD models.
 """
 
+import contextlib
 import multiprocessing
 import os
+import shutil
+import tempfile
 import time
 
 os.environ["GMMU"] = "0"
@@ -13,11 +16,35 @@ from openpilot.common.hardware.hw import Paths
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.modeld.helpers import chestnut_present
-from openpilot.sunnypilot.modeld_v2.helpers import cache_is_fresh, load_model, read_parts
+from openpilot.sunnypilot.modeld_v2.helpers import artifact_size_mtime, cache_is_fresh, load_model, read_parts
 from openpilot.sunnypilot.models.helpers import get_selected_bundle, get_driving_model
+from openpilot.common.file_chunker import get_manifest_path, open_file_chunked
 
 WARMUP_TIMEOUT = 120
 WARMUP_TERMINATE_TIMEOUT = 5
+
+
+@contextlib.contextmanager
+def _materialized_artifact(path: str):
+  """Expose a chunked artifact as a temporary file for mmap-based parsing/loading."""
+  if os.path.isfile(path):
+    yield path
+    return
+
+  size, mtime_ns = artifact_size_mtime(path)
+  fd, temporary_path = tempfile.mkstemp(prefix=".model-warmup-", dir=os.path.dirname(path) or ".")
+  try:
+    with os.fdopen(fd, "wb") as destination, open_file_chunked(path) as source:
+      shutil.copyfileobj(source, destination)
+    if os.path.getsize(temporary_path) != size:
+      raise OSError(f"incomplete chunked model materialization: {path}")
+    os.utime(temporary_path, ns=(mtime_ns, mtime_ns))
+    yield temporary_path
+  finally:
+    with contextlib.suppress(FileNotFoundError):
+      os.unlink(temporary_path)
+    with contextlib.suppress(FileNotFoundError):
+      os.unlink(f"{temporary_path}.cache")
 
 
 def _warmup_model(path: str, source: str) -> None:
@@ -25,7 +52,10 @@ def _warmup_model(path: str, source: str) -> None:
   if source == "chestnut":
     from tinygrad.runtime.ops_amd import AMDDevice
     AMDDevice.wait_timeout_ms = 3000
-  load_model(path)
+  with _materialized_artifact(path) as load_path:
+    load_model(load_path)
+    if load_path != path:
+      os.replace(f"{load_path}.cache", f"{path}.cache")
 
 
 def _finish_warmup_worker(worker, timeout: float = WARMUP_TIMEOUT) -> tuple[bool, int | None]:
@@ -67,15 +97,21 @@ def main():
       driving_model = get_driving_model(bundle)
       path = os.path.join(Paths.model_root(), driving_model.artifact.fileName) if driving_model else ""
 
-      if not path or not os.path.isfile(path) or cache_is_fresh(path):
+      if not path or not (os.path.isfile(path) or os.path.isfile(get_manifest_path(path))) or cache_is_fresh(path):
         continue
 
-      attempt = (source, path, os.stat(path).st_mtime_ns)
+      try:
+        artifact_size, artifact_mtime_ns = artifact_size_mtime(path)
+      except (OSError, ValueError) as e:
+        cloudlog.warning(f"skipping {source} cache warmup for incomplete artifact {path}: {e}")
+        continue
+      attempt = (source, path, artifact_size, artifact_mtime_ns)
       if attempt in failed | native:
         continue
 
       try:
-        _, extras = read_parts(path)
+        with _materialized_artifact(path) as read_path:
+          _, extras = read_parts(read_path)
       except (OSError, ValueError, KeyError, EOFError) as e:
         # Legacy OOB models are loaded by load_compatible_model and have no
         # plain-artifact cache to warm.
