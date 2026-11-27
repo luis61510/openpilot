@@ -16,8 +16,19 @@ from openpilot.selfdrive.modeld.helpers import chestnut_present
 from openpilot.sunnypilot.modeld_v2.helpers import cache_is_fresh, load_model, read_parts
 from openpilot.sunnypilot.models.helpers import get_selected_bundle, get_driving_model
 
-WARMUP_TIMEOUT = 120
+# A cold big artifact is ~1.8 GB of weights over USB (500+ kernels): building its
+# graph and writing the cache takes minutes, so the eGPU warmup needs its own
+# budget. Killing it early can never produce a cache and leaves every following
+# onroad start cold again.
+WARMUP_TIMEOUTS = {
+  "qcom": 120,
+  "chestnut": 1800,
+}
 WARMUP_TERMINATE_TIMEOUT = 5
+# A failed warmup must be retried later, not blacklisted until the file changes:
+# the retry is what eventually produces the cache the runner needs.
+WARMUP_RETRY_BASE = 60.0
+WARMUP_RETRY_MAX = 600.0
 
 
 def _warmup_model(path: str, source: str) -> None:
@@ -28,7 +39,7 @@ def _warmup_model(path: str, source: str) -> None:
   load_model(path)
 
 
-def _finish_warmup_worker(worker, timeout: float = WARMUP_TIMEOUT) -> tuple[bool, int | None]:
+def _finish_warmup_worker(worker, timeout: float = WARMUP_TIMEOUTS["qcom"]) -> tuple[bool, int | None]:
   """Wait for cache generation; terminate a hung offroad worker without blocking the loop."""
   worker.join(timeout)
   if worker.is_alive():
@@ -48,6 +59,10 @@ def _finish_warmup_worker(worker, timeout: float = WARMUP_TIMEOUT) -> tuple[bool
   return exitcode == 0, exitcode
 
 
+def _retry_delay(failures: int) -> float:
+  return min(WARMUP_RETRY_MAX, WARMUP_RETRY_BASE * (2 ** max(0, failures - 1)))
+
+
 def main():
   """
   Runs offroad and prepares stale plain-artifact caches for the selected QCOM
@@ -55,11 +70,15 @@ def main():
   Native artifacts are already fused/compiled and legacy OOB artifacts do not
   use this plain-artifact cache format.
   """
-  params, failed, native = Params(), set(), set()
+  params = Params()
   spawn = multiprocessing.get_context("spawn")
+  # attempt -> (failures, next attempt time); keyed on the artifact mtime so a
+  # re-download starts with a clean slate and a failed attempt is retried later.
+  schedule: dict[tuple, tuple[int, float]] = {}
+  native: set[tuple] = set()
 
   while True:
-    for source in ("chestnut", "qcom"):
+    for source in ("qcom", "chestnut"):
       if source == "chestnut" and not chestnut_present():
         continue
 
@@ -71,7 +90,8 @@ def main():
         continue
 
       attempt = (source, path, os.stat(path).st_mtime_ns)
-      if attempt in failed | native:
+      failures, next_time = schedule.get(attempt, (0, 0.0))
+      if attempt in native or time.monotonic() < next_time:
         continue
 
       try:
@@ -80,17 +100,23 @@ def main():
         # Legacy OOB models are loaded by load_compatible_model and have no
         # plain-artifact cache to warm.
         cloudlog.warning(f"skipping {source} cache warmup for legacy/unsupported model {path}: {e}")
-        failed.add(attempt)
-        continue
-
-      if "input_specs" in extras:
         native.add(attempt)
         continue
 
+      if "input_specs" in extras:
+        # The runner fuses this artifact with the stock warp at load time, so a
+        # plain warmup of the unfused graph would write a cache the runner never
+        # reads. Leave it to the runner instead of building a cache twice.
+        cloudlog.info(f"skipping {source} cache warmup for fused/native model {path}")
+        native.add(attempt)
+        continue
+
+      timeout = WARMUP_TIMEOUTS.get(source, WARMUP_TIMEOUTS["qcom"])
       worker = spawn.Process(target=_warmup_model, args=(path, source), daemon=True)
+      started = time.monotonic()
       try:
         worker.start()
-        completed, exitcode = _finish_warmup_worker(worker)
+        completed, exitcode = _finish_warmup_worker(worker, timeout)
       except Exception:
         cloudlog.exception("failed to start or wait for %s model cache warmup: %s", source, path)
         completed, exitcode = False, None
@@ -98,9 +124,16 @@ def main():
         if worker.pid is not None and not worker.is_alive():
           worker.close()
 
-      if not completed or not cache_is_fresh(path):
-        cloudlog.error(f"{source} model cache warmup failed for {path} with exit code {exitcode}")
-        failed.add(attempt)
+      elapsed = time.monotonic() - started
+      if completed and cache_is_fresh(path):
+        cloudlog.info(f"{source} model cache warmed in {elapsed:.0f}s: {path}")
+        schedule.pop(attempt, None)
+      else:
+        failures += 1
+        delay = _retry_delay(failures)
+        schedule[attempt] = (failures, time.monotonic() + delay)
+        cloudlog.error(f"{source} model cache warmup failed after {elapsed:.0f}s for {path} "
+                       f"with exit code {exitcode}; retrying in {delay:.0f}s")
 
     time.sleep(10)
 

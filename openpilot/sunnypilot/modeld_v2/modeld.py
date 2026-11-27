@@ -42,14 +42,26 @@ from openpilot.sunnypilot.modeld_v2.meta_helper import load_meta_constants
 from openpilot.sunnypilot.modeld_v2.camera_offset_helper import CameraOffsetHelper
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
-from openpilot.sunnypilot.modeld_v2.helpers import load_compatible_model
+from openpilot.sunnypilot.modeld_v2.helpers import cache_is_fresh, is_plain_artifact, load_compatible_model
 from openpilot.sunnypilot.modeld_v2.frame_fusion import fused_with_warp
 from openpilot.sunnypilot.modeld_v2.model_adapters import get_model_adapter
 from openpilot.sunnypilot.models.helpers import get_active_bundle, get_driving_model
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
 
 PROCESS_NAME = "openpilot.selfdrive.modeld.modeld_tinygrad"
+# How long startup waits for the eGPU model before it starts on the small model.
+# A downloaded big artifact is ~1.8 GB of weights over USB across ~500 kernels and
+# its first load also builds the tinygrad graph and writes the cache, so it can
+# take minutes: this deadline only decides when to stop blocking startup, it must
+# never abandon the load itself.
 BIG_MODEL_TIMEOUT = 60
+# With no warm cache the load cannot finish inside a startup window, so do not make
+# the driver wait for it: start the small model right away and adopt the big one
+# when it is actually ready.
+BIG_MODEL_COLD_START_WAIT = 5.0
+# Hard cap for one load attempt. Past this the driver is presumed wedged: stop
+# waiting for it and keep the small model, without starting a competing transfer.
+BIG_MODEL_LOAD_DEADLINE = 1800.0
 
 
 def _pkl_exists(path):
@@ -186,8 +198,11 @@ class ModelState(ModelStateBase):
                            f"{self.selected_bundle_ref!r} -> {current_ref!r}")
 
   def _init_combined(self, pkl_path, cam_w, cam_h, bundle):
-    cloudlog.warning(f"loading combined pkl: {pkl_path}")
+    cached = cache_is_fresh(pkl_path)
+    cloudlog.warning(f"loading combined pkl: {pkl_path} ({'warm cache' if cached else 'no cache, building graph'})")
+    started = time.monotonic()
     jits = load_compatible_model(pkl_path, extend=fused_with_warp(cam_w, cam_h, self.chestnut))
+    cloudlog.warning(f"combined pkl ready in {time.monotonic() - started:.1f}s ({'from cache' if cached else 'built'})")
 
     metadata = jits['metadata']
     self.WARP_DEV = metadata.get('warp_dev', 'QCOM') if COMMA_HARDWARE else 'CPU'
@@ -339,8 +354,8 @@ def main(demo=False):
   cloudlog.bind(daemon=PROCESS_NAME)
   setproctitle(PROCESS_NAME)
 
-  CHESTNUT = (_find_driving_pkl(get_active_bundle(chestnut=True)) is not None
-              and (chestnut_present() or cable_connected()))
+  chestnut_pkl = _find_driving_pkl(get_active_bundle(chestnut=True))
+  CHESTNUT = chestnut_pkl is not None and (chestnut_present() or cable_connected())
   if CHESTNUT:
     from tinygrad.runtime.ops_amd import AMDDevice
     AMDDevice.wait_timeout_ms = 3000
@@ -379,12 +394,20 @@ def main(demo=False):
   st = time.monotonic()
 
   model = None
-  chestnut_initial_load_timed_out = False
+  chestnut_initial_load_pending = False
+  chestnut_initial_load_started = 0.0
   initial_big_loader = None
   initial_big_load_result = None
   if CHESTNUT:
-    # Python threads cannot be safely cancelled. Keep explicit ownership of a timed-out
-    # loader and never start another AMD load until it exits; discard any late result then.
+    # Python threads cannot be safely cancelled. Keep explicit ownership of a slow
+    # loader and never start another AMD transfer until it exits. A load that
+    # outlives the startup window keeps running and is adopted by the frame loop,
+    # because the alternative (kill it, discard the graph and the cache it writes)
+    # makes every later start cold again and the big model never becomes usable.
+    # Only a plain artifact has a graph to build and a cache to fill; chunked and
+    # legacy OOB pickles are ready as soon as they are read, so keep waiting for them.
+    first_wait = BIG_MODEL_TIMEOUT if (not is_plain_artifact(chestnut_pkl) or cache_is_fresh(chestnut_pkl)) \
+                 else BIG_MODEL_COLD_START_WAIT
     max_big_model_attempts = 2
     for attempt in range(1, max_big_model_attempts + 1):
       big_load_result = {}
@@ -392,28 +415,32 @@ def main(demo=False):
       def load_big(result):
         try:
           _wait_for_chestnut()
+          started = time.monotonic()
           result["model"] = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
+          cloudlog.info("chestnut ModelState ready in %.1fs", time.monotonic() - started)
         except Exception as e:
           result["error"] = repr(e)
           cloudlog.exception("chestnut load failed (attempt %d)", attempt)
 
       loader = threading.Thread(target=load_big, args=(big_load_result,), daemon=True,
                                 name=f"chestnut-model-loader-{attempt}")
+      chestnut_initial_load_started = time.monotonic()
       loader.start()
-      loader.join(BIG_MODEL_TIMEOUT)
+      loader.join(first_wait)
 
       if loader.is_alive():
-        chestnut_initial_load_timed_out = True
+        chestnut_initial_load_pending = True
         initial_big_loader = loader
         initial_big_load_result = big_load_result
-        cloudlog.error("chestnut load timed out after %ss; keeping small model available and not starting another GPU loader",
-                       BIG_MODEL_TIMEOUT)
+        cloudlog.warning("chestnut load still running after %.0fs; driving the small model meanwhile and "
+                         "keeping the load alive", first_wait)
         break
 
       big_model = big_load_result.get("model")
       if big_model is not None:
         model = big_model
-        cloudlog.info("chestnut model loaded on attempt %d/%d", attempt, max_big_model_attempts)
+        cloudlog.info("chestnut model loaded on attempt %d/%d in %.1fs",
+                      attempt, max_big_model_attempts, time.monotonic() - chestnut_initial_load_started)
         break
 
       if attempt < max_big_model_attempts:
@@ -436,7 +463,9 @@ def main(demo=False):
     raise RuntimeError("no drivable model could be loaded; both selected and bundled model loading failed")
   # Do not retain a second reference to the AMD model after selecting the active model.
   big_model = None
-  params.put_bool("ChestnutLoading", False)
+  # Keep reporting "loading" while the startup loader is still running so the UI
+  # shows progress instead of the eGPU being failed.
+  params.put_bool("ChestnutLoading", chestnut_initial_load_pending)
   assert model is not None
   active_bundle = get_active_bundle(chestnut=model._selection_chestnut) if not model._uses_override else None
   active_ref = active_bundle.ref if active_bundle is not None else None
@@ -468,9 +497,8 @@ def main(demo=False):
   chestnut_recovery_next_attempt = time.monotonic() + 30.0
   chestnut_recovery_attempts = 0
   chestnut_recovery_timed_out = False
-  # Never start a second AMD loader while a startup loader that exceeded its
-  # timeout may still be running in the background.
-  chestnut_recovery_disabled = chestnut_initial_load_timed_out
+  # Never start a second AMD loader while one is still inside the driver.
+  chestnut_recovery_disabled = False
 
   # setup filter to track dropped frames
   frame_dropped_filter = FirstOrderFilter(0., 10., 1. / model.constants.MODEL_FREQ)
@@ -535,17 +563,30 @@ def main(demo=False):
       meta_extra = meta_main
 
     sm.update(0)
-    if initial_big_loader is not None and not initial_big_loader.is_alive():
-      # A timed-out loader may have completed after startup fell back to QCOM. Drop
-      # its late model reference before allowing any subsequent AMD load attempt.
-      if initial_big_load_result is not None:
-        initial_big_load_result.clear()
+    if initial_big_loader is not None:
+      now = time.monotonic()
+      if initial_big_loader.is_alive():
+        if not chestnut_recovery_disabled and now - chestnut_initial_load_started > BIG_MODEL_LOAD_DEADLINE:
+          cloudlog.error("chestnut load exceeded %.0fs; keeping the small model and not starting another AMD load",
+                         BIG_MODEL_LOAD_DEADLINE)
+          chestnut_recovery_disabled = True
+      else:
+        # The startup load outlived its startup window but finished. Its graph and
+        # cache are valid, so adopt it at the next safe frame instead of dropping
+        # the model and redoing the whole cold load on the next start.
+        initial_big_loader = None
+        late_model = (initial_big_load_result or {}).get("model")
+        late_error = (initial_big_load_result or {}).get("error")
         initial_big_load_result = None
-      initial_big_loader = None
-      big_model = None
-      chestnut_recovery_disabled = False
-      chestnut_recovery_next_attempt = time.monotonic() + 30.0
-      cloudlog.info("timed-out startup AMD loader exited; late result released and guarded recovery retries are now enabled")
+        big_model = None
+        if late_model is not None:
+          chestnut_recovery_candidate = late_model
+          cloudlog.warning("chestnut load finished %.0fs after startup; waiting for a safe frame to activate it",
+                           now - chestnut_initial_load_started)
+        else:
+          chestnut_recovery_next_attempt = now + 30.0
+          cloudlog.error("chestnut background load failed: %s", late_error or "unknown error")
+        params.put_bool("ChestnutLoading", False)
 
     # Recover the AMD model only while the vehicle is stationary and all openpilot
     # actuators are disengaged. Model loading runs off the model frame loop; model
@@ -556,16 +597,14 @@ def main(demo=False):
 
       if chestnut_recovery_thread is not None:
         if chestnut_recovery_thread.is_alive():
-          if not chestnut_recovery_timed_out and now - chestnut_recovery_started > BIG_MODEL_TIMEOUT:
-            cloudlog.error("chestnut recovery load timed out; waiting for loader to exit and disabling further retries")
+          if not chestnut_recovery_timed_out and now - chestnut_recovery_started > BIG_MODEL_LOAD_DEADLINE:
+            cloudlog.error("chestnut recovery load exceeded %.0fs; waiting for the driver state to settle",
+                           BIG_MODEL_LOAD_DEADLINE)
             chestnut_recovery_timed_out = True
         else:
           chestnut_recovery_thread = None
           params.put_bool("ChestnutLoading", False)
-          if chestnut_recovery_timed_out:
-            chestnut_recovery_disabled = True
-            chestnut_recovery_result.clear()
-          elif "model" in chestnut_recovery_result:
+          if "model" in chestnut_recovery_result:
             chestnut_recovery_candidate = chestnut_recovery_result.pop("model")
             cloudlog.info("chestnut recovery model loaded; waiting for safe frame-boundary switch")
           else:
@@ -589,7 +628,8 @@ def main(demo=False):
         frame_dropped_filter.x = 0.0
         prev_action = log.ModelDataV2.Action()
         cloudlog.warning("chestnut model recovered and activated while vehicle stopped and disengaged")
-      elif chestnut_recovery_thread is None and chestnut_recovery_candidate is None and recovery_safe and now >= chestnut_recovery_next_attempt:
+      elif (initial_big_loader is None and chestnut_recovery_thread is None and chestnut_recovery_candidate is None and
+            recovery_safe and now >= chestnut_recovery_next_attempt):
         chestnut_recovery_attempts += 1
         chestnut_recovery_result = {}
         chestnut_recovery_started = now
