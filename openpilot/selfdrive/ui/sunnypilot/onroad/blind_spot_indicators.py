@@ -4,11 +4,16 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+import time
+
 import pyray as rl
 
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.filter_simple import FirstOrderFilter
+
+
+BLIND_SPOT_BLINK_PERIOD_S = 0.8
 
 
 class BlindSpotIndicators:
@@ -28,7 +33,7 @@ class BlindSpotIndicators:
     return ui_state.blindspot and (self._blind_spot_left_alpha_filter.x > 0.01 or self._blind_spot_right_alpha_filter.x > 0.01)
 
   def _draw_vehicle_icon(self, x: int, y: int, alpha: int) -> None:
-    """Draw a compact top-down vehicle icon for an occupied blind spot."""
+    """Draw a red top-down vehicle icon with a transparent background."""
     body = rl.Color(255, 65, 65, alpha)
     glass = rl.Color(35, 45, 55, alpha)
     tires = rl.Color(20, 20, 20, alpha)
@@ -39,7 +44,7 @@ class BlindSpotIndicators:
     rl.draw_rectangle(x + 2, y + 52, 8, 17, tires)
     rl.draw_rectangle(x + 34, y + 52, 8, 17, tires)
 
-    # Vehicle body and windows
+    # Vehicle body and windows. No background panel is drawn, so the HUD remains visible.
     rl.draw_rectangle(x + 7, y + 4, 32, 74, body)
     rl.draw_rectangle(x + 11, y + 17, 24, 18, glass)
     rl.draw_rectangle(x + 11, y + 43, 24, 17, glass)
@@ -53,11 +58,15 @@ class BlindSpotIndicators:
     BLIND_SPOT_Y_OFFSET = 108
     ICON_WIDTH = 46
 
-    if self._blind_spot_left_alpha_filter.x > 0.01:
+    # Flash at a steady 1.25 Hz (0.4 s visible / 0.4 s transparent).
+    # The icon has no opaque backing, so the underlying HUD remains visible.
+    blink_on = (time.monotonic() % BLIND_SPOT_BLINK_PERIOD_S) < (BLIND_SPOT_BLINK_PERIOD_S / 2)
+
+    if self._blind_spot_left_alpha_filter.x > 0.01 and blink_on:
       alpha = int(255 * self._blind_spot_left_alpha_filter.x)
       self._draw_vehicle_icon(int(rect.x + BLIND_SPOT_MARGIN_X), int(rect.y + BLIND_SPOT_Y_OFFSET), alpha)
 
-    if self._blind_spot_right_alpha_filter.x > 0.01:
+    if self._blind_spot_right_alpha_filter.x > 0.01 and blink_on:
       alpha = int(255 * self._blind_spot_right_alpha_filter.x)
       pos_x = int(rect.x + rect.width - BLIND_SPOT_MARGIN_X - ICON_WIDTH)
       self._draw_vehicle_icon(pos_x, int(rect.y + BLIND_SPOT_Y_OFFSET), alpha)
