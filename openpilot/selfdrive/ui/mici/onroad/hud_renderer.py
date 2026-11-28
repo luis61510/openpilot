@@ -3,6 +3,7 @@ import pyray as rl
 from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
+from openpilot.selfdrive.ui.mici.onroad.traffic_control import TrafficControlRenderer
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus, ChestnutState
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
@@ -119,6 +120,7 @@ class HudRenderer(Widget):
 
     self._turn_intent = TurnIntent()
     self._torque_bar = TorqueBar()
+    self._traffic_control_renderer = TrafficControlRenderer(compact=True)
 
     self._txt_wheel: rl.Texture = gui_app.texture('icons_mici/wheel.png', 50, 50)
     self._txt_wheel_critical: rl.Texture = gui_app.texture('icons_mici/wheel_critical.png', 50, 50)
@@ -148,6 +150,7 @@ class HudRenderer(Widget):
   def _update_state(self) -> None:
     """Update HUD state based on car state and controls state."""
     sm = ui_state.sm
+    self._traffic_control_renderer.update()
     if sm.recv_frame["carState"] < ui_state.started_frame:
       self.is_cruise_set = False
       self.set_speed = SET_SPEED_NA
@@ -189,6 +192,7 @@ class HudRenderer(Widget):
     self._draw_chestnut_telemetry(rect)
 
     self._draw_steering_wheel(rect)
+    self._traffic_control_renderer.render(rect)
 
   def _draw_chestnut_telemetry(self, rect: rl.Rectangle) -> None:
     """Show four Chestnut eGPU metrics, highlighting threshold exceedances in red."""

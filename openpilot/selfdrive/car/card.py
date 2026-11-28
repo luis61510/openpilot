@@ -6,6 +6,7 @@ import threading
 import openpilot.cereal.messaging as messaging
 
 from openpilot.cereal import log
+from openpilot.selfdrive.car.tesla_traffic_observer import TeslaTrafficControlObserver, publish_tesla_traffic_control
 from opendbc.car.structs import car
 
 from openpilot.common.params import Params
@@ -66,7 +67,7 @@ class Car:
   def __init__(self, CI=None, RI=None) -> None:
     self.can_sock = messaging.sub_sock('can', timeout=20)
     self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents'])
-    self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'radarTracks'])
+    self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'radarTracks', 'carStateSP'])
 
     self.can_rcv_cum_timeout_counter = 0
 
@@ -109,6 +110,7 @@ class Car:
       self.RI = RI
 
     self.CP.alternativeExperience = 0
+    self.traffic_control_observer = TeslaTrafficControlObserver() if self.CP.carName == 'tesla' else None
     openpilot_enabled_toggle = self.params.get_bool("OpenpilotEnabledToggle")
     controller_available = self.CI.CC is not None and openpilot_enabled_toggle and not self.CP.dashcamOnly
     self.CP.passive = not controller_available or self.CP.dashcamOnly
@@ -162,6 +164,8 @@ class Car:
 
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
+    if self.traffic_control_observer is not None:
+      self.traffic_control_observer.update(can_list, time.monotonic_ns())
 
     # Update carState from CAN
     CS = self.CI.update(can_list)
@@ -206,6 +210,16 @@ class Car:
     co_send.valid = self.sm.all_checks(['carControl'])
     co_send.carOutput.actuatorsOutput = self.last_actuators_output
     self.pm.send('carOutput', co_send)
+
+    # Publish passive Tesla traffic-light recognition separately from vehicle state.
+    cs_sp_send = messaging.new_message('carStateSP')
+    cs_sp_send.valid = CS.canValid
+    if self.traffic_control_observer is not None:
+      publish_tesla_traffic_control(
+        cs_sp_send.carStateSP,
+        self.traffic_control_observer.snapshot(time.monotonic_ns()),
+      )
+    self.pm.send('carStateSP', cs_sp_send)
 
     # kick off controlsd step while we actuate the latest carControl packet
     cs_send = messaging.new_message('carState')
