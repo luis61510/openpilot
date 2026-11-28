@@ -21,6 +21,11 @@ class Paths:
       return '/data/media/0/realdata/'
 
   @staticmethod
+  def model_root() -> str:
+    """Model cache directory alongside realdata on both comma hardware and PC."""
+    return str(Path(Paths.log_root()).resolve().parent / "models")
+
+  @staticmethod
   def swaglog_root() -> str:
     if PC:
       return os.path.join(Paths.comma_home(), "log")
