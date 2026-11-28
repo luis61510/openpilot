@@ -86,7 +86,7 @@ class ModelState:
     self.LAT_SMOOTH_SECONDS = LAT_SMOOTH_SECONDS
     input_devices = get_tg_input_devices(PROCESS_NAME, usbgpu)
     self.WARP_DEV, self.QUEUE_DEV = input_devices['WARP_DEV'], input_devices['QUEUE_DEV']
-    jits = pickle.loads(read_file_chunked(modeld_pkl_path(usbgpu)))
+    jits = pickle.loads(read_file_chunked(stock_modeld_pkl_path(usbgpu)))
     vision_metadata = jits['metadata']['vision']
     self.vision_input_shapes = vision_metadata['input_shapes']
     self.vision_input_names = list(self.vision_input_shapes.keys())
