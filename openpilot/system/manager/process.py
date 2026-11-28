@@ -17,6 +17,9 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 
 
+MODEL_PROCESSES_WITH_RESTART_BACKOFF = {"modeld", "modeld_tinygrad"}
+
+
 def launcher(proc: str, name: str) -> None:
   try:
     # import the process
@@ -239,14 +242,14 @@ def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params: Par
       running.append(p)
     else:
       p.stop(block=False)
-      if isinstance(p, (PythonProcess, NativeProcess)) and p.proc is None:
+      if p.name in MODEL_PROCESSES_WITH_RESTART_BACKOFF and isinstance(p, (PythonProcess, NativeProcess)) and p.proc is None:
         # A normal offroad/condition stop must not inherit a prior crash backoff.
         p.restart_count = 0
         p.restart_at = 0.0
 
   now = time.monotonic()
   for p in running:
-    if isinstance(p, (PythonProcess, NativeProcess)):
+    if p.name in MODEL_PROCESSES_WITH_RESTART_BACKOFF and isinstance(p, (PythonProcess, NativeProcess)):
       # A dead multiprocessing.Process remains attached to the manager object.
       # Reap it explicitly before attempting a restart.
       if p.proc is not None and p.proc.exitcode is not None:
