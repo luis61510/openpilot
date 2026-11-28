@@ -5,6 +5,7 @@ import unittest
 import signal
 import time
 from types import SimpleNamespace
+from pathlib import Path
 
 from opendbc.car.structs import car
 from openpilot.common.test import OpenpilotTestCase
@@ -18,6 +19,7 @@ import openpilot.system.manager.manager as manager
 from openpilot.system.manager.process import ensure_running
 from openpilot.system.manager.process_config import managed_processes, procs
 from openpilot.common.hardware import HARDWARE
+from openpilot.common.hardware.hw import Paths
 
 os.environ['FAKEUPLOAD'] = "1"
 
@@ -145,6 +147,10 @@ class TestManager(OpenpilotTestCase):
     assert manifest.is_file()
     assert sidecar.is_file()
     assert not inactive.exists()
+
+  def test_model_cache_path_is_sibling_to_log_root(self):
+    assert Path(Paths.model_root()).name == "models"
+    assert Path(Paths.model_root()).parent == Path(Paths.log_root()).resolve().parent
 
   def test_stock_runner_device_map_and_artifact_names(self):
     from openpilot.selfdrive.modeld.helpers import get_tg_input_devices, stock_modeld_pkl_path
