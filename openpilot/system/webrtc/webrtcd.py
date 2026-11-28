@@ -74,6 +74,7 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
     "liveCalibration": "extrinsicsCalibration",
     "roadCameraState": "narrowRoadCameraState",
   }
+
   def __init__(self, services: list[str], enabled: bool = True):
     super().__init__()
     self.output_service_names = {self.SERVICE_ALIASES.get(service, service): service for service in services}
