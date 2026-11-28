@@ -3,9 +3,11 @@ import operator
 import platform
 
 from opendbc.car.structs import car
+from openpilot.cereal import custom
 from openpilot.common.params import Params
 from openpilot.common.hardware import PC, COMMA_HARDWARE
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
+from openpilot.sunnypilot.models.helpers import get_active_model_runner
 
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 
@@ -61,6 +63,16 @@ def navigation(started: bool, params: Params, CP: car.CarParams) -> bool:
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
+def is_stock_model(started: bool, params: Params, CP: car.CarParams) -> bool:
+  """Run the built-in stock model runtime when no Tinygrad bundle is active."""
+  return get_active_model_runner(params, force_check=not started) == custom.ModelManagerSP.Runner.stock
+
+
+def is_tinygrad_model(started: bool, params: Params, CP: car.CarParams) -> bool:
+  """Run the custom Tinygrad runtime for a selected Tinygrad model bundle."""
+  return get_active_model_runner(params, force_check=not started) == custom.ModelManagerSP.Runner.tinygrad
+
+
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
   return params.get_bool("IsLiveStreaming")
 
@@ -85,7 +97,8 @@ procs = [
   PythonProcess("micd", "openpilot.system.micd", iscar),
   PythonProcess("timed", "openpilot.system.timed", always_run, enabled=not PC),
 
-  PythonProcess("modeld", "openpilot.selfdrive.modeld.modeld", only_onroad),
+  PythonProcess("modeld", "openpilot.selfdrive.modeld.modeld", and_(only_onroad, is_stock_model)),
+  PythonProcess("modeld_tinygrad", "openpilot.selfdrive.modeld.modeld_tinygrad", and_(only_onroad, is_tinygrad_model)),
   PythonProcess("models_manager", "openpilot.sunnypilot.models.manager", only_offroad),
   PythonProcess("navd", "openpilot.selfdrive.navigation.navd", navigation),
   PythonProcess("mapsd", "openpilot.selfdrive.navigation.mapsd", navigation),
