@@ -239,6 +239,10 @@ def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params: Par
       running.append(p)
     else:
       p.stop(block=False)
+      if isinstance(p, (PythonProcess, NativeProcess)) and p.proc is None:
+        # A normal offroad/condition stop must not inherit a prior crash backoff.
+        p.restart_count = 0
+        p.restart_at = 0.0
 
   now = time.monotonic()
   for p in running:
