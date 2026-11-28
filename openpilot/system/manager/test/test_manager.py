@@ -4,6 +4,7 @@ import os
 import unittest
 import signal
 import time
+from types import SimpleNamespace
 
 from opendbc.car.structs import car
 from openpilot.common.test import OpenpilotTestCase
@@ -11,6 +12,7 @@ from openpilot.common.params import Params
 from openpilot.cereal import custom
 import openpilot.system.manager.process_config as process_config
 import openpilot.sunnypilot.models.helpers as model_helpers
+import openpilot.sunnypilot.models.manager as model_manager
 from openpilot.system.manager.process import PythonProcess
 import openpilot.system.manager.manager as manager
 from openpilot.system.manager.process import ensure_running
@@ -102,6 +104,42 @@ class TestManager(OpenpilotTestCase):
     process.restart_at = 0
     ensure_running([process], True, params, CP)
     assert getattr(process, "started", False)
+
+  def test_model_download_cancel_signal(self):
+    manager_instance = object.__new__(model_manager.ModelManagerSP)
+    manager_instance.params = Params()
+    manager_instance.params.put("ModelManager_DownloadRef", "cancel-test-ref")
+    assert not manager_instance._download_interrupted()
+    manager_instance.params.remove("ModelManager_DownloadRef")
+    assert manager_instance._download_interrupted()
+
+  def test_cache_cleanup_preserves_active_chunked_bundle(self, monkeypatch, tmp_path):
+    model_dir = tmp_path
+    chunk = model_dir / "active.pkl.chunk01of01"
+    manifest = model_dir / "active.pkl.chunkmanifest"
+    sidecar = model_dir / "active.pkl.download"
+    inactive = model_dir / "inactive.pkl"
+    chunk.write_bytes(b"active model")
+    manifest.write_text("1")
+    sidecar.write_text("resume metadata")
+    inactive.write_bytes(b"inactive model")
+
+    artifact = SimpleNamespace(fileName="active.pkl", chunks=[])
+    metadata = SimpleNamespace(fileName="", chunks=[])
+    bundle = SimpleNamespace(models=[SimpleNamespace(artifact=artifact, metadata=metadata)])
+    monkeypatch.setattr(model_manager.Paths, "model_root", staticmethod(lambda: str(model_dir)))
+    monkeypatch.setattr(model_manager, "get_selected_bundle",
+                        lambda _params, source: bundle if source == "qcom" else None)
+
+    manager_instance = object.__new__(model_manager.ModelManagerSP)
+    manager_instance.params = Params()
+    manager_instance.selected_bundle = None
+    manager_instance.clear_model_cache()
+
+    assert chunk.is_file()
+    assert manifest.is_file()
+    assert sidecar.is_file()
+    assert not inactive.exists()
 
   def test_stock_runner_device_map_and_artifact_names(self):
     from openpilot.selfdrive.modeld.helpers import get_tg_input_devices, stock_modeld_pkl_path
