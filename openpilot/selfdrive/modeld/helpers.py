@@ -17,7 +17,12 @@ USBGPU_PID = 0x0001
 def stock_modeld_pkl_path(usbgpu: bool = False) -> Path:
   """Return the built-in stock model artifact, separate from user-selected bundles."""
   prefix = 'big_' if usbgpu else ''
-  return MODELS_DIR / f'{prefix}driving_tinygrad.pkl'
+  filename = f'{prefix}driving_tinygrad.pkl'
+  local_path = MODELS_DIR / filename
+  if local_path.is_file() or Path(f"{local_path}.chunkmanifest").is_file():
+    return local_path
+  shared_path = Path(Paths.model_root()) / filename
+  return shared_path if shared_path.is_file() or Path(f"{shared_path}.chunkmanifest").is_file() else local_path
 
 
 def get_tg_input_devices(process_name: str, usbgpu: bool) -> dict[str, str]:
@@ -68,7 +73,12 @@ def modeld_pkl_path(chestnut: bool):
     return model_path
 
   prefix = 'big_' if chestnut else ''
-  return MODELS_DIR / f'{prefix}driving_tinygrad.pkl'
+  filename = f'{prefix}driving_tinygrad.pkl'
+  local_path = MODELS_DIR / filename
+  if local_path.is_file():
+    return local_path
+  shared_path = Path(Paths.model_root()) / filename
+  return shared_path if shared_path.is_file() else local_path
 
 def load_oob(path, chestnut=False):
   from tinygrad import Context
