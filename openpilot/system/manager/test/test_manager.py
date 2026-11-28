@@ -55,9 +55,14 @@ class TestManager(OpenpilotTestCase):
     assert model_helpers.get_active_model_runner(params, force_check=True) == custom.ModelManagerSP.Runner.tinygrad
 
     # Non-default small and big bundles both dispatch by their declared runner.
-    tinygrad_runner = type("Runner", (), {"raw": custom.ModelManagerSP.Runner.tinygrad})()
-    tinygrad_bundle = type("Bundle", (), {"runner": tinygrad_runner})()
-    monkeypatch.setattr(model_helpers, "get_active_bundle", lambda *_args, **_kwargs: tinygrad_bundle)
+    small_runner = type("Runner", (), {"raw": custom.ModelManagerSP.Runner.tinygrad})()
+    small_bundle = type("Bundle", (), {"runner": small_runner})()
+    monkeypatch.setattr(model_helpers, "get_active_bundle", lambda *_args, **_kwargs: small_bundle)
+    assert model_helpers.get_active_model_runner(params, force_check=True) == custom.ModelManagerSP.Runner.tinygrad
+
+    big_runner = type("Runner", (), {"raw": custom.ModelManagerSP.Runner.tinygrad})()
+    big_bundle = type("Bundle", (), {"runner": big_runner})()
+    monkeypatch.setattr(model_helpers, "get_active_bundle", lambda *_args, **_kwargs: big_bundle)
     assert model_helpers.get_active_model_runner(params, force_check=True) == custom.ModelManagerSP.Runner.tinygrad
 
     stock_runner = type("Runner", (), {"raw": custom.ModelManagerSP.Runner.stock})()
