@@ -35,8 +35,8 @@ def get_tg_input_devices(process_name: str, usbgpu: bool) -> dict[str, str]:
 def usbgpu_present() -> bool:
   for device in Path("/sys/bus/usb/devices").glob("*"):
     try:
-      if int((device / "idVendor").read_text(), 16) == USBGPU_VID and \\
-          int((device / "idProduct").read_text(), 16) == USBGPU_PID:
+      if (int((device / "idVendor").read_text(), 16) == USBGPU_VID and
+          int((device / "idProduct").read_text(), 16) == USBGPU_PID):
         return True
     except (OSError, ValueError):
       continue
