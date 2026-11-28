@@ -10,6 +10,7 @@ from openpilot.common.test import OpenpilotTestCase
 from openpilot.common.params import Params
 from openpilot.cereal import custom
 import openpilot.system.manager.process_config as process_config
+import openpilot.sunnypilot.models.helpers as model_helpers
 from openpilot.system.manager.process import PythonProcess
 import openpilot.system.manager.manager as manager
 from openpilot.system.manager.process import ensure_running
@@ -35,6 +36,30 @@ class TestManager(OpenpilotTestCase):
 
   def test_duplicate_procs(self):
     assert len(procs) == len(managed_processes), "Duplicate process names"
+
+  def test_four_default_and_custom_runner_paths(self, monkeypatch):
+    params = Params()
+    params.remove("ModelRunnerTypeCache")
+
+    # Default small model: stock runner.
+    monkeypatch.setattr(model_helpers, "get_active_bundle", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(model_helpers, "chestnut_present", lambda: False)
+    monkeypatch.setattr(model_helpers, "chestnut_compiled", lambda: False)
+    assert model_helpers.get_active_model_runner(params, force_check=True) == custom.ModelManagerSP.Runner.stock
+
+    # Default big model on Chestnut: the built-in artifact still uses Tinygrad.
+    monkeypatch.setattr(model_helpers, "chestnut_present", lambda: True)
+    monkeypatch.setattr(model_helpers, "chestnut_compiled", lambda: True)
+    assert model_helpers.get_active_model_runner(params, force_check=True) == custom.ModelManagerSP.Runner.tinygrad
+
+    # Non-default small and big bundles both dispatch by their declared runner.
+    tinygrad_bundle = type("Bundle", (), {"runner": custom.ModelManagerSP.Runner.tinygrad})()
+    monkeypatch.setattr(model_helpers, "get_active_bundle", lambda *_args, **_kwargs: tinygrad_bundle)
+    assert model_helpers.get_active_model_runner(params, force_check=True) == custom.ModelManagerSP.Runner.tinygrad
+
+    stock_bundle = type("Bundle", (), {"runner": custom.ModelManagerSP.Runner.stock})()
+    monkeypatch.setattr(model_helpers, "get_active_bundle", lambda *_args, **_kwargs: stock_bundle)
+    assert model_helpers.get_active_model_runner(params, force_check=True) == custom.ModelManagerSP.Runner.stock
 
   def test_model_runner_dispatch(self, monkeypatch):
     CP = car.CarParams.new_message()
