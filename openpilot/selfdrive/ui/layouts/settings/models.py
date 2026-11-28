@@ -88,10 +88,6 @@ class ModelsLayout(Widget):
     selected = 0
     if current:
       selected = next((i + 1 for i, b in enumerate(bundles) if b.ref == current.ref), 0)
-    if not bundles:
-      gui_app.push_widget(alert_dialog(tr("No model list is available. Connect to the internet and refresh the model lists.")))
-      return
-
     def on_selection(result):
       if result == DialogResult.CONFIRM and self._dialog is not None:
         index = self._dialog.selection
