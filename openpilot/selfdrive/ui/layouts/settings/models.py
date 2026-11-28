@@ -151,12 +151,13 @@ class ModelsLayout(Widget):
       folder = next((override.value for override in bundle.overrides if override.key == "folder"), "")
       folders.setdefault(folder, []).append(bundle)
 
-    result = [TreeFolder("", [TreeNode("", {"display_name": tr("Default model")})])]
+    result = []
     favorite_nodes = [TreeNode(bundle.ref, {"display_name": bundle.displayName,
                                              "short_name": bundle.internalName})
                       for bundle in bundles if bundle.ref in favorites]
     if favorite_nodes:
       result.append(TreeFolder("Favorites", favorite_nodes))
+    result.append(TreeFolder("", [TreeNode("", {"display_name": tr("Default model")})]))
 
     ordered = sorted(folders.items(), key=lambda item: max((b.index for b in item[1]), default=-1), reverse=True)
     for folder, folder_bundles in ordered:
