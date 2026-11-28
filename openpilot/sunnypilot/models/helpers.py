@@ -122,8 +122,8 @@ def get_active_source(chestnut: bool | None = None, chestnut_active: bool | None
 
 
 def get_active_bundle(params: Params | None = None, *, chestnut: bool | None = None) -> "custom.ModelManagerSP.ModelBundle | None":
-  # no cross-slot fallback: an empty active slot means the hardware default, which
-  # only stock modeld can run - modeld_v2 requires a real bundle
+  # No cross-slot fallback: an empty active slot means the hardware default.
+  # The runner resolver routes the built-in Chestnut default through Tinygrad.
   params = params or Params()
   return get_selected_bundle(params, get_active_source(chestnut=chestnut))
 
