@@ -516,22 +516,54 @@ class ModelManagerSP:
         rk.keep_time()
 
   def clear_model_cache(self) -> None:
-    """ Clears the model cache directory of all files except those in the active model bundle."""
-    active_files = []
-    for source in ACTIVE_BUNDLE_KEYS:
-      if selected_bundle := get_selected_bundle(self.params, source):
-        for model in selected_bundle.models:
-          if model.artifact.fileName:
-            active_files.append(model.artifact.fileName)
+    """Clear inactive model artifacts while preserving active/default models and chunk sidecars."""
+    from openpilot.common.file_chunker import get_existing_chunks, get_manifest_path
 
     model_dir = Paths.model_root()
+    keep_files: set[str] = {
+      "driving_tinygrad.pkl", "big_driving_tinygrad.pkl",
+      "driving_warp_1344x760_tinygrad.pkl", "driving_warp_1928x1208_tinygrad.pkl",
+      "big_driving_warp_1344x760_tinygrad.pkl", "big_driving_warp_1928x1208_tinygrad.pkl",
+      "dmonitoring_model_tinygrad.pkl", "dmonitoring_model_metadata.pkl",
+    }
+
+    bundles = [get_selected_bundle(self.params, source) for source in ACTIVE_BUNDLE_KEYS]
+    if self.selected_bundle is not None:
+      bundles.append(self.selected_bundle)
+
+    def preserve_artifact(artifact) -> None:
+      filename = getattr(artifact, "fileName", "")
+      if not filename:
+        return
+      keep_files.add(filename)
+      full_path = os.path.join(model_dir, filename)
+      manifest = get_manifest_path(full_path)
+      keep_files.add(os.path.basename(manifest))
+      keep_files.add(os.path.basename(full_path + ".download"))
+      keep_files.add(os.path.basename(full_path + ".download.tmp"))
+      try:
+        keep_files.update(os.path.basename(path) for path in get_existing_chunks(full_path))
+      except (OSError, ValueError):
+        pass
+      for chunk in getattr(artifact, "chunks", []):
+        if chunk.fileName:
+          keep_files.add(chunk.fileName)
+
+    for bundle in bundles:
+      if bundle is None:
+        continue
+      for model in bundle.models:
+        preserve_artifact(model.artifact)
+        preserve_artifact(model.metadata)
+
     try:
       for filename in os.listdir(model_dir):
-        if filename not in active_files:
-          file_path = os.path.join(model_dir, filename)
-          if os.path.isfile(file_path):
-            os.remove(file_path)
-      cloudlog.info("Model cache cleared, keeping active model files")
+        if filename in keep_files:
+          continue
+        file_path = os.path.join(model_dir, filename)
+        if os.path.isfile(file_path):
+          os.remove(file_path)
+      cloudlog.info(f"Model cache cleared; preserved {len(keep_files)} active/default artifact files")
     except Exception as e:
       cloudlog.exception(f"Error clearing model cache: {str(e)}")
 
