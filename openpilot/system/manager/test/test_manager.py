@@ -95,7 +95,7 @@ class TestManager(OpenpilotTestCase):
 
     params = Params()
     CP = car.CarParams.new_message()
-    process = PythonProcess("restart_test", "unused.module", lambda *_: True)
+    process = PythonProcess("modeld_tinygrad", "unused.module", lambda *_: True)
     process.proc = DeadProcess()
     process.started_at = time.monotonic() - 10
     process.start = lambda: setattr(process, "started", True)
