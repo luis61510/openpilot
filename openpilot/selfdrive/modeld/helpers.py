@@ -20,6 +20,10 @@ def modeld_pkl_path(chestnut: bool):
   source = "chestnut" if chestnut else "qcom"
   bundle = get_selected_bundle(Params(), source)
   if bundle is not None:
+    from openpilot.cereal import custom
+    runner = getattr(bundle.runner, "raw", bundle.runner)
+    if runner != custom.ModelManagerSP.Runner.tinygrad:
+      raise RuntimeError(f"Selected model bundle {bundle.ref} uses an unsupported runner: {runner}")
     artifacts = [model.artifact.fileName for model in bundle.models
                  if model.artifact.fileName and model.artifact.fileName.endswith(".pkl")]
     if not artifacts:
