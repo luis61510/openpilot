@@ -117,8 +117,9 @@ class TreeOptionDialog(MultiOptionDialog):
   def _build_visible_items(self, reset_scroll=True):
     self._visible_items = []
     current = self._find_current()
+    selected = next((node for folder in self.folders for node in folder.nodes if node.ref == self.selection_ref), None)
     self.current = self._display(current) if current else ""
-    self.selection = self.current
+    self.selection = self._display(selected) if selected else ""
 
     for folder in self.folders:
       folder_matches = bool(self.query and _matches(self.query, [folder.folder]))
