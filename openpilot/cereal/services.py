@@ -44,7 +44,6 @@ _services: dict[str, tuple] = {
   "lateralDelay": (True, 4., 1),
   "operatingSystemLog": (True, 0.),
   "carState": (True, 100., 10),
-  "carStateSP": (True, 100., 10),
   "carControl": (True, 100., 10),
   "carOutput": (True, 100., 10),
   "longitudinalPlan": (True, 20., 10),

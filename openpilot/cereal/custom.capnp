@@ -31,44 +31,7 @@ struct CustomReserved5 @0xa5cd762cd951a455 {
 struct CustomReserved6 @0xf98d843bfd7004a3 {
 }
 
-struct CarStateSP @0xb86e6369214c01c8 {
-  speedLimit @0 :Float32;
-  flags @1 :UInt32;
-  teslaRoadContext @2 :TeslaRoadContext;
-  teslaTrafficControl @3 :TeslaTrafficControl;
-  teslaAccDistanceLevel @4 :UInt8;
-  teslaAccDistanceValid @5 :Bool;
-}
-
-struct TeslaRoadContext {
-  available @0 :Bool;
-  trafficLightColor @1 :UInt8;
-  stopLineDistance @2 :Float32;
-}
-
-struct TeslaTrafficControl {
-  available @0 :Bool;
-  validForControl @1 :Bool;
-  sourceBus @2 :UInt8;
-  dlc @3 :UInt8;
-  featureState @4 :UInt8;
-  stateMachine @5 :UInt8;
-  controlSource @6 :UInt8;
-  controlType @7 :UInt8;
-  distance @8 :Float32;
-  lightState @9 :UInt8;
-  continuationReason @10 :UInt8;
-  confirmationType @11 :UInt8;
-  warningSuppressionReason @12 :UInt8;
-  unavailableReason @13 :UInt8;
-  visionLight @14 :Bool;
-  visionSign @15 :Bool;
-  visionRoadMarking @16 :Bool;
-  visionLine @17 :Bool;
-  frameMonoTime @18 :UInt64;
-  quality @19 :UInt8;
-  rawAddress @20 :UInt32;
-  rawPayload @21 :Data;
+struct CustomReserved7 @0xb86e6369214c01c8 {
 }
 
 struct CustomReserved8 @0xf416ec09499d9d19 {
