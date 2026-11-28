@@ -144,8 +144,6 @@ class ModelsLayout(Widget):
 
   def _source_folders(self, favorites: set[str], source: str):
     bundles = self._bundles(source)
-    if not bundles:
-      return []
     folders: dict[str, list] = {}
     for bundle in bundles:
       folder = next((override.value for override in bundle.overrides if override.key == "folder"), "")
@@ -176,11 +174,6 @@ class ModelsLayout(Widget):
     if not ui_state.is_offroad():
       gui_app.push_widget(alert_dialog(tr("Model selection is available while offroad.")))
       return
-    bundles = self._bundles(source)
-    if not bundles:
-      gui_app.push_widget(alert_dialog(tr("No models are available. Connect to the internet and refresh the model list.")))
-      return
-
     self._dialog_source = source
     favorites_raw = self.params.get("ModelManager_Favs")
     favorites = set(favorites_raw.split(";")) if favorites_raw else set()
