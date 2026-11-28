@@ -22,7 +22,8 @@ def modeld_pkl_path(chestnut: bool):
   if bundle is not None:
     from openpilot.cereal import custom
     runner = getattr(bundle.runner, "raw", bundle.runner)
-    if runner != custom.ModelManagerSP.Runner.tinygrad:
+    tinygrad_runner = getattr(custom.ModelManagerSP.Runner.tinygrad, "raw", custom.ModelManagerSP.Runner.tinygrad)
+    if runner != tinygrad_runner:
       raise RuntimeError(f"Selected model bundle {bundle.ref} uses an unsupported runner: {runner}")
     artifacts = [model.artifact.fileName for model in bundle.models
                  if model.artifact.fileName and model.artifact.fileName.endswith(".pkl")]
