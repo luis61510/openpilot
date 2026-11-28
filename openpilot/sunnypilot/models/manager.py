@@ -322,6 +322,10 @@ class ModelManagerSP:
           elif url_index > 0:
             cloudlog.warning(f"Falling back to original Hugging Face URL for {artifact.fileName}")
           await self._download_file(candidate_url, path, artifact)
+          if not await verify_file(path, artifact.downloadUri.sha256):
+            _remove_file(path)
+            _remove_download_state(path)
+            raise ValueError(f"Hash validation failed from {urlsplit(candidate_url).hostname} for {artifact.fileName}")
           return
         except DownloadCancelled:
           raise
