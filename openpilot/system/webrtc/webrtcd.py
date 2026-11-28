@@ -476,8 +476,9 @@ async def handle_get_stream(state: ServerState, raw_body: bytes, content_type: s
 async def handle_get_schema(state: ServerState, services_param: str) -> tuple[int, bytes, str]:
   services = services_param.split(",")
   services = [s for s in services if s]
-  assert all(s in log.Event.schema.fields and not s.endswith("DEPRECATED") for s in services), "Invalid service name"
-  schema_dict = {s: generate_field(log.Event.schema.fields[s]) for s in services}
+  source_services = {service: CerealOutgoingMessageProxy.SERVICE_ALIASES.get(service, service) for service in services}
+  assert all(source in log.Event.schema.fields and not source.endswith("DEPRECATED") for source in source_services.values()), "Invalid service name"
+  schema_dict = {service: generate_field(log.Event.schema.fields[source]) for service, source in source_services.items()}
   return _json_response(schema_dict)
 
 
