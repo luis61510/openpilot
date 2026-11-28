@@ -138,6 +138,9 @@ class NativeProcess(ManagerProcess):
     self.enabled = enabled
     self.sigkill = sigkill
     self.launcher = nativelauncher
+    self.restart_count = 0
+    self.restart_at = 0.0
+    self.started_at = 0.0
 
   def start(self) -> None:
     # In case we only tried a non blocking stop we need to stop it before restarting
@@ -151,6 +154,7 @@ class NativeProcess(ManagerProcess):
     cloudlog.info(f"starting process {self.name}")
     self.proc = Process(name=self.name, target=self.launcher, args=(self.cmdline, cwd, self.name))
     self.proc.start()
+    self.started_at = time.monotonic()
     self.shutting_down = False
 
 
@@ -162,6 +166,9 @@ class PythonProcess(ManagerProcess):
     self.enabled = enabled
     self.sigkill = sigkill
     self.launcher = launcher
+    self.restart_count = 0
+    self.restart_at = 0.0
+    self.started_at = 0.0
 
   def start(self) -> None:
     # In case we only tried a non blocking stop we need to stop it before restarting
@@ -174,6 +181,7 @@ class PythonProcess(ManagerProcess):
     cloudlog.info(f"starting python {self.module}")
     self.proc = Process(name=self.name, target=self.launcher, args=(self.module, self.name))
     self.proc.start()
+    self.started_at = time.monotonic()
     self.shutting_down = False
 
 
@@ -232,7 +240,27 @@ def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params: Par
     else:
       p.stop(block=False)
 
+  now = time.monotonic()
   for p in running:
-    p.start()
+    if isinstance(p, (PythonProcess, NativeProcess)):
+      # A dead multiprocessing.Process remains attached to the manager object.
+      # Reap it explicitly before attempting a restart.
+      if p.proc is not None and p.proc.exitcode is not None:
+        runtime = now - p.started_at
+        exit_code = p.stop(block=True)
+        if runtime >= 60:
+          p.restart_count = 0
+        p.restart_count += 1
+        delay = min(5 * (2 ** (p.restart_count - 1)), 300)
+        p.restart_at = now + delay
+        cloudlog.error(f"{p.name} exited unexpectedly (code={exit_code}); restarting in {delay}s (attempt {p.restart_count})")
+
+      if p.proc is None:
+        if now >= p.restart_at:
+          p.start()
+        else:
+          cloudlog.warning(f"{p.name} restart backoff: {max(1, int(p.restart_at - now))}s remaining")
+    else:
+      p.start()
 
   return running
