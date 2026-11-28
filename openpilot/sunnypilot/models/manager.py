@@ -531,23 +531,29 @@ class ModelManagerSP:
     if self.selected_bundle is not None:
       bundles.append(self.selected_bundle)
 
-    def preserve_artifact(artifact) -> None:
-      filename = getattr(artifact, "fileName", "")
+    def preserve_path(filename: str) -> None:
       if not filename:
         return
       keep_files.add(filename)
       full_path = os.path.join(model_dir, filename)
-      manifest = get_manifest_path(full_path)
-      keep_files.add(os.path.basename(manifest))
+      keep_files.add(os.path.basename(get_manifest_path(full_path)))
       keep_files.add(os.path.basename(full_path + ".download"))
       keep_files.add(os.path.basename(full_path + ".download.tmp"))
       try:
-        keep_files.update(os.path.basename(path) for path in get_existing_chunks(full_path))
+        keep_files.update(os.path.basename(chunk) for chunk in get_existing_chunks(full_path))
       except (OSError, ValueError):
         pass
+
+    # Built-in stock artifacts may also be chunked in the shared model root.
+    for filename in tuple(keep_files):
+      preserve_path(filename)
+
+    def preserve_artifact(artifact) -> None:
+      filename = getattr(artifact, "fileName", "")
+      preserve_path(filename)
       for chunk in getattr(artifact, "chunks", []):
         if chunk.fileName:
-          keep_files.add(chunk.fileName)
+          preserve_path(chunk.fileName)
 
     for bundle in bundles:
       if bundle is None:
