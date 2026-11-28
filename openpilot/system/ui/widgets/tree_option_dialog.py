@@ -44,6 +44,7 @@ class TreeItemWidget(Button):
     self._font = gui_app.font(FontWeight.MEDIUM)
 
   def _render(self, rect):
+    self.set_button_style(ButtonStyle.PRIMARY if self.selected else ButtonStyle.NORMAL)
     super()._render(rect)
     if self.favorite_callback and not self.is_folder:
       star = "★" if self.is_favorite else "☆"
@@ -92,6 +93,8 @@ class TreeOptionDialog(MultiOptionDialog):
   def _select_node(self, node):
     self.selection_ref = node.ref
     self.selection = self._display(node)
+    for item in self._visible_items:
+      item.selected = not item.is_folder and item.ref == node.ref
 
   def _toggle_favorite(self, node):
     if node.ref in self.favorites:
