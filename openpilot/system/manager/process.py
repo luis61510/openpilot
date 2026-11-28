@@ -251,13 +251,19 @@ def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params: Par
       # Reap it explicitly before attempting a restart.
       if p.proc is not None and p.proc.exitcode is not None:
         runtime = now - p.started_at
+        was_shutting_down = p.shutting_down
         exit_code = p.stop(block=True)
-        if runtime >= 60:
+        if was_shutting_down:
           p.restart_count = 0
-        p.restart_count = min(p.restart_count + 1, 7)
-        delay = min(5 * (2 ** (p.restart_count - 1)), 300)
-        p.restart_at = now + delay
-        cloudlog.error(f"{p.name} exited unexpectedly (code={exit_code}); restarting in {delay}s (attempt {p.restart_count})")
+          p.restart_at = 0.0
+          cloudlog.info(f"{p.name} completed an intentional stop (code={exit_code})")
+        else:
+          if runtime >= 60:
+            p.restart_count = 0
+          p.restart_count = min(p.restart_count + 1, 7)
+          delay = min(5 * (2 ** (p.restart_count - 1)), 300)
+          p.restart_at = now + delay
+          cloudlog.error(f"{p.name} exited unexpectedly (code={exit_code}); restarting in {delay}s (attempt {p.restart_count})")
 
       if p.proc is None:
         if now >= p.restart_at:
