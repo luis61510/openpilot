@@ -1,52 +1,44 @@
 #!/usr/bin/env python3
-from collections.abc import Callable
-import base64
-import ctypes
-import gc
-from functools import cached_property
+"""Stock Tinygrad model runner.
+
+This entrypoint handles the built-in model artifacts only. User-selected Tinygrad
+bundles and Chestnut/AMD eGPU models are handled by modeld_tinygrad.py.
+"""
 import os
-os.environ['GMMU'] = '0' # for chestnut fast loading, noop for qcom
-os.environ.setdefault('AM_POWER_LIMIT', '100')
-from tinygrad.device import Buffer, Device
-from tinygrad.dtype import DType, dtypes
-from tinygrad.engine.realize import lower_and_compile
-from tinygrad.tensor import Tensor
-from tinygrad.helpers import round_up
-from tinygrad.uop.ops import UOp
-import math
 import pickle
-import threading
 import time
+
 import numpy as np
+from tinygrad.tensor import Tensor
+
 import openpilot.cereal.messaging as messaging
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.messaging import PubMaster, SubMaster
-from openpilot.cereal.services import SERVICE_LIST
 from openpilot.cereal.visionipc import VisionStreamType
 from msgq.visionipc import VisionIpcClient, VisionBuf
 from opendbc.car.car_helpers import get_demo_car_params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.params import Params
-from openpilot.common.hardware.usb import cable_connected
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.transformations.camera import DEVICE_CAMERAS
-from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 from openpilot.common.transformations.model import get_warp_matrix
+from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 from openpilot.selfdrive.controls.lib.desire_helper import DesireHelper
 from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, should_stop, smooth_value, get_curvature_from_plan
+from openpilot.selfdrive.modeld.compile_modeld import make_input_queues, WARP_INPUTS, POLICY_INPUTS
 from openpilot.selfdrive.modeld.parse_model_outputs import Parser
 from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg, fill_driving_model_data, fill_pose_msg, PublishState
 from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR, chestnut_present, chestnut_compiled, modeld_pkl_path, load_oob, wait_for_chestnut
+from openpilot.selfdrive.modeld.helpers import stock_modeld_pkl_path, get_tg_input_devices, usbgpu_present
+from openpilot.common.file_chunker import read_file_chunked, get_manifest_path
 
+PROCESS_NAME = "selfdrive.modeld.modeld"
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
-
 LAT_SMOOTH_SECONDS = 0.0
 LONG_SMOOTH_SECONDS = 0.3
 MIN_LAT_CONTROL_SPEED = 0.3
-BIG_MODEL_TIMEOUT = 60
 
 
 def get_action_from_model(model_output: dict[str, np.ndarray], prev_action: log.ModelDataV2.Action,
@@ -77,52 +69,6 @@ def get_action_from_model(model_output: dict[str, np.ndarray], prev_action: log.
                                 shouldStop=bool(stop))
 
 
-class ChestnutGpuState:
-  # GPU metrics require modeld's GPU context
-  def __init__(self, pm: PubMaster, big: bool):
-    self.pm = pm
-    self.big = big
-    self.valid = True
-    self.sends = 0
-    self.metrics = {}
-
-  @cached_property
-  def power_limit(self) -> int:
-    smu = Device["AMD"].iface.dev_impl.smu
-    return smu._send_msg(smu.smu_mod.PPSMC_MSG_GetPptLimit, 0, read_back_arg=True, timeout=100)
-
-  def send(self) -> None:
-    msg = messaging.new_message('chestnutGpuState')
-    state = msg.chestnutGpuState
-    self.sends += 1
-    if self.big and "AMD" in Device._opened_devices and self.sends % 100 == 1:
-      try:
-        smu = Device["AMD"].iface.dev_impl.smu
-        metrics_t = smu.smu_mod.SmuMetricsExternal_t
-        smu._send_msg(smu.smu_mod.PPSMC_MSG_TransferTableSmu2Dram, smu.smu_mod.TABLE_SMU_METRICS, timeout=100)
-        metrics_buf = bytearray(smu.adev.vram.view(smu.driver_table_paddr, ctypes.sizeof(metrics_t))[:])
-        metrics = metrics_t.from_buffer(metrics_buf).SmuMetrics
-        self.metrics = {'tempC': metrics.AvgTemperature[smu.smu_mod.TEMP_HOTSPOT],
-                        'memoryTempC': metrics.AvgTemperature[smu.smu_mod.TEMP_MEM],
-                        'powerDrawW': metrics.AverageSocketPower,
-                        'powerLimitW': self.power_limit,
-                        'gpuUsagePercent': metrics.AverageGfxActivity,
-                        'gpuClockMhz': metrics.AverageGfxclkFrequencyPostDs,
-                        'fanSpeedRpm': metrics.AvgFanRpm}
-        self.valid = True
-      except Exception:
-        if self.valid:
-          cloudlog.exception("chestnut state read failed")
-        self.valid = False
-        self.metrics.clear()
-    if self.big:
-      for k, v in self.metrics.items():
-        setattr(state, k, v)
-
-    msg.valid = not self.big or (self.valid and bool(self.metrics))
-    self.pm.send('chestnutGpuState', msg)
-
-
 class FrameMeta:
   frame_id: int = 0
   timestamp_sof: int = 0
@@ -133,66 +79,48 @@ class FrameMeta:
       self.frame_id, self.timestamp_sof, self.timestamp_eof = vipc.frame_id, vipc.timestamp_sof, vipc.timestamp_eof
 
 
-def input_view(buffer: Buffer, shape: tuple[int, ...], dtype: DType, offset: int) -> Tensor:
-  view = buffer.view(math.prod(shape) * dtype.itemsize, offset).ensure_allocated()
-  return Tensor(UOp.from_buffer(view, dtype)).reshape(shape)
-
-
 class ModelState:
   prev_desire: np.ndarray  # for tracking the rising edge of the pulse
 
-  def __init__(self, cam_w: int, cam_h: int, chestnut: bool):
-    jits = load_oob(modeld_pkl_path(chestnut), chestnut)
-    self.model_device = jits['input_specs']['new_img'][2]
-    self.input_shapes = {name: (shape, np.dtype(dtype)) for name, (shape, dtype, _) in jits['input_specs'].items()}
-    self.state_pairs = {name: f'next_{name}' for name in self.input_shapes if f'next_{name}' in jits['metadata']['output_shapes']}
-    self.vision_input_names = ('img', 'big_img')
-    self.output_slices = pickle.loads(base64.b64decode(jits['metadata']['metadata']['output_slices']))
+  def __init__(self, cam_w: int, cam_h: int, usbgpu: bool):
+    self.LAT_SMOOTH_SECONDS = LAT_SMOOTH_SECONDS
+    input_devices = get_tg_input_devices(PROCESS_NAME, usbgpu)
+    self.WARP_DEV, self.QUEUE_DEV = input_devices['WARP_DEV'], input_devices['QUEUE_DEV']
+    jits = pickle.loads(read_file_chunked(modeld_pkl_path(usbgpu)))
+    vision_metadata = jits['metadata']['vision']
+    self.vision_input_shapes = vision_metadata['input_shapes']
+    self.vision_input_names = list(self.vision_input_shapes.keys())
+    self.vision_output_slices = vision_metadata['output_slices']
+
+    policy_metadata = jits['metadata']['on_policy']
+    self.policy_input_shapes = policy_metadata['input_shapes']
+    self.policy_output_slices = policy_metadata['output_slices']
 
     self.prev_desire = np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
-    self.chestnut = chestnut
 
-    stride, y_height, uv_height, _ = get_nv12_info(cam_w, cam_h)
-    self.frame_copy_size = stride * (y_height + uv_height)
-    self.pack_inputs()
-    with open(MODELS_DIR / f'{"big_" if chestnut else ""}driving_warp_{cam_w}x{cam_h}_tinygrad.pkl', 'rb') as f:
-      self.run_warp = pickle.load(f)['run']
-    self.run_warp.captured._linear = lower_and_compile(self.run_warp.captured._linear)
-    self.run_model = jits['run']
-    self.run_model.captured._linear = lower_and_compile(self.run_model.captured._linear)
-    self.outputs = {name: Tensor(np.zeros(shape, dtype=dtype), device=device).realize() for name, (shape, dtype, device) in jits['output_specs'].items()}
-    for name, next_name in self.state_pairs.items():
-      state = self.input_queues[name]
-      self.outputs[next_name] = input_view(state._buffer(), state.shape, state.dtype, 0)
+    self.frame_skip = ModelConstants.MODEL_RUN_FREQ // ModelConstants.MODEL_CONTEXT_FREQ
+    self.input_queues, self.npy = make_input_queues(self.vision_input_shapes, self.policy_input_shapes, self.frame_skip, device=self.QUEUE_DEV)
+    self.full_frames: dict[str, Tensor] = {}
+    self._blob_cache: dict[int, Tensor] = {}
     self.parser = Parser()
-
-  def pack_inputs(self) -> None:
-    # Pack host inputs into one upload to reduce USB transfer overhead for the eGPU.
-    self.input_queues = {name: Tensor(np.zeros(shape, dtype=dtype), device=self.model_device).realize()
-                         for name, (shape, dtype) in self.input_shapes.items() if name in self.state_pairs}
-    shapes = {'tfm': (2, 3, 3)} | {name: shape for name, (shape, _) in self.input_shapes.items()
-                                   if name not in self.state_pairs and name != 'new_img'}
-    npy_size = sum(round_up(math.prod(shape) * 4, 128) for shape in shapes.values())
-    self.packed_input = np.zeros(npy_size + 2 * self.frame_copy_size, dtype=np.uint8)
-    self.input_host = Tensor(self.packed_input, device='NPY')._buffer()
-    self.input_device = Tensor(self.packed_input, device=self.model_device)._buffer()
-    self.npy = {}
-    offset = 0
-    for name, shape in shapes.items():
-      self.npy[name] = np.ndarray(shape, dtype=np.float32, buffer=self.packed_input, offset=offset)
-      self.input_queues[name] = input_view(self.input_device, shape, dtypes.float32, offset)
-      offset += round_up(self.npy[name].nbytes, 128)
-    self.frames = self.packed_input[npy_size:].reshape(2, self.frame_copy_size)
-    self.warp_inputs = {'input_frame': input_view(self.input_device, self.frames.shape, dtypes.uint8, npy_size), 'M_inv': self.input_queues.pop('tfm')}
+    self.frame_buf_params = {k: get_nv12_info(cam_w, cam_h) for k in ('img', 'big_img')}
+    self.run_policy = jits['run_policy']
+    self.warp_enqueue = jits[(cam_w,cam_h)]
 
   def slice_outputs(self, model_outputs: np.ndarray, output_slices: dict[str, slice]) -> dict[str, np.ndarray]:
-    return {k: model_outputs[np.newaxis, v] for k,v in output_slices.items()}
+    parsed_model_outputs = {k: model_outputs[np.newaxis, v] for k,v in output_slices.items()}
+    return parsed_model_outputs
 
   def run(self, bufs: dict[str, VisionBuf], transforms: dict[str, np.ndarray],
-          inputs: dict[str, np.ndarray], after_enqueue: Callable[[], None] | None = None) -> dict[str, np.ndarray]:
-    for i, key in enumerate(self.vision_input_names):
-      np.copyto(self.frames[i], np.frombuffer(bufs[key].data, dtype=np.uint8, count=self.frame_copy_size))
-      self.npy['tfm'][i] = transforms[key]
+          inputs: dict[str, np.ndarray], prepare_only: bool) -> dict[str, np.ndarray] | None:
+    for key in bufs.keys():
+      ptr = np.frombuffer(bufs[key].data, dtype=np.uint8).ctypes.data
+      yuv_size = self.frame_buf_params[key][3]
+      # There is a ringbuffer of imgs, just cache tensors pointing to all of them
+      cache_key = (key, ptr)
+      if cache_key not in self._blob_cache:
+        self._blob_cache[cache_key] = Tensor.from_blob(ptr, (yuv_size,), dtype='uint8', device=self.WARP_DEV)
+      self.full_frames[key] = self._blob_cache[cache_key]
 
     # Model decides when action is completed, so desire input is just a pulse triggered on rising edge
     inputs['desire_pulse'][0] = 0
@@ -200,142 +128,99 @@ class ModelState:
     self.prev_desire[:] = inputs['desire_pulse']
     self.npy['traffic_convention'][:] = inputs['traffic_convention']
     self.npy['action_t'][:] = inputs['action_t']
+    self.npy['tfm'][:,:] = transforms['img'][:,:]
+    self.npy['big_tfm'][:,:] = transforms['big_img'][:,:]
 
-    self.input_device.copy_from(self.input_host)
-    self.input_queues['new_img'] = self.run_warp(**self.warp_inputs)
-    self.run_model(output_buffers=self.outputs, **self.input_queues)
-    if self.chestnut and (err := Device[self.outputs['outputs'].device].error_state.host.view(fmt='q')[0]):
-      raise RuntimeError(f"chestnut failed with {err}")
-    if after_enqueue is not None:
-      after_enqueue()
-    model_output = self.outputs['outputs'].numpy()[0]
-    if self.chestnut and not np.all(np.isfinite(model_output)):
-      raise RuntimeError("model output not finite")
-    outputs_dict = self.parser.parse_outputs(self.slice_outputs(model_output, self.output_slices))
+    img, big_img = self.warp_enqueue(**{k: self.input_queues[k] for k in WARP_INPUTS}, frame=self.full_frames['img'], big_frame=self.full_frames['big_img'])
+
+    if prepare_only:
+      return None
+
+    vision_output, on_policy_output = self.run_policy(
+      **{k: self.input_queues[k] for k in POLICY_INPUTS}, img=img, big_img=big_img
+    )
+
+    vision_output = vision_output.numpy().flatten()
+    on_policy_output = on_policy_output.numpy().flatten()
+    vision_outputs_dict = self.parser.parse_vision_outputs(self.slice_outputs(vision_output, self.vision_output_slices))
+    policy_outputs_dict = self.parser.parse_policy_outputs(self.slice_outputs(on_policy_output, self.policy_output_slices))
+    combined_outputs_dict = {**vision_outputs_dict, **policy_outputs_dict}
 
     if SEND_RAW_PRED:
-      outputs_dict['raw_pred'] = model_output.copy()
-    return outputs_dict
+      combined_outputs_dict['raw_pred'] = np.concatenate([vision_output.copy(), on_policy_output.copy()])
+    return combined_outputs_dict
 
-  def warmup(self) -> None:
-    dummy_frames = {k: np.zeros(self.frame_copy_size, dtype=np.uint8) for k in self.vision_input_names}
-    eye = np.eye(3, dtype=np.float32)
-    dims = {'desire_pulse': ModelConstants.DESIRE_LEN, 'traffic_convention': 2, 'action_t': 2}
-    self.run(dummy_frames, dict.fromkeys(self.vision_input_names, eye), {k: np.zeros(v, dtype=np.float32) for k, v in dims.items()})
-    self.packed_input[:] = 0
-    for key in self.state_pairs:
-      self.input_queues[key].assign(0).realize()
-    self.prev_desire[:] = 0
 
 
 def main(demo=False):
-  cloudlog.warning("modeld init")
+  cloudlog.warning("stock modeld init")
 
-  CHESTNUT = chestnut_compiled() and (chestnut_present() or cable_connected())
-  if CHESTNUT:
-    from tinygrad.runtime.ops_amd import AMDDevice
-    AMDDevice.wait_timeout_ms = 3000
+  gpu_present = usbgpu_present()
+  gpu_artifact = stock_modeld_pkl_path(usbgpu=True)
+  gpu_compiled = os.path.isfile(gpu_artifact) or os.path.isfile(get_manifest_path(gpu_artifact))
+  usbgpu = gpu_present and gpu_compiled
   params = Params()
-  params.put_bool("ChestnutLoading", CHESTNUT)
-  params.remove("ChestnutActive")
+  params.put_bool("UsbGpuPresent", gpu_present)
+  params.put_bool("UsbGpuCompiled", gpu_compiled)
 
-  gc.disable()
+  if not usbgpu:
+    config_realtime_process(7, 54)
 
-  # visionipc clients
   while True:
     available_streams = VisionIpcClient.available_streams("camerad", block=False)
     if available_streams:
-      use_extra_client = VisionStreamType.VISION_STREAM_WIDE_ROAD in available_streams and VisionStreamType.VISION_STREAM_NARROW_ROAD in available_streams
+      use_extra_client = (VisionStreamType.VISION_STREAM_WIDE_ROAD in available_streams and
+                          VisionStreamType.VISION_STREAM_NARROW_ROAD in available_streams)
       main_wide_camera = VisionStreamType.VISION_STREAM_NARROW_ROAD not in available_streams
       break
     time.sleep(.1)
 
-  vipc_client_main_stream = VisionStreamType.VISION_STREAM_WIDE_ROAD if main_wide_camera else VisionStreamType.VISION_STREAM_NARROW_ROAD
-  vipc_client_main = VisionIpcClient("camerad", vipc_client_main_stream, True)
+  main_stream = VisionStreamType.VISION_STREAM_WIDE_ROAD if main_wide_camera else VisionStreamType.VISION_STREAM_NARROW_ROAD
+  vipc_client_main = VisionIpcClient("camerad", main_stream, True)
   vipc_client_extra = VisionIpcClient("camerad", VisionStreamType.VISION_STREAM_WIDE_ROAD, False)
-  cloudlog.warning(f"vision stream set up, main_wide_camera: {main_wide_camera}, use_extra_client: {use_extra_client}")
+  cloudlog.warning(f"stock modeld vision streams: main_wide_camera={main_wide_camera}, use_extra_client={use_extra_client}")
 
   while not vipc_client_main.connect(False):
     time.sleep(0.1)
   while use_extra_client and not vipc_client_extra.connect(False):
     time.sleep(0.1)
 
-  cloudlog.warning(f"connected main cam with buffer size: {vipc_client_main.buffer_len} ({vipc_client_main.width} x {vipc_client_main.height})")
+  cloudlog.warning(f"connected main cam: {vipc_client_main.width} x {vipc_client_main.height}")
   if use_extra_client:
-    cloudlog.warning(f"connected extra cam with buffer size: {vipc_client_extra.buffer_len} ({vipc_client_extra.width} x {vipc_client_extra.height})")
+    cloudlog.warning(f"connected extra cam: {vipc_client_extra.width} x {vipc_client_extra.height}")
 
-  st = time.monotonic()
-  cloudlog.warning("loading model")
-  model = None
-  if CHESTNUT:
-    big_model = None
-    def load_big():
-      nonlocal big_model
-      try:
-        wait_for_chestnut()
-        m = ModelState(vipc_client_main.width, vipc_client_main.height, True)
-        m.warmup()
-        big_model = m
-      except Exception:
-        cloudlog.exception("big model load failed")
-    loader = threading.Thread(target=load_big, daemon=True)
-    loader.start()
-    loader.join(BIG_MODEL_TIMEOUT)
-    model = big_model
-    if model is None and not params.get_bool("ChestnutRetry"):
-      # a crank can cut the chestnut power during the load, retry once with an onroad cycle
-      cloudlog.error("big model load failed, cycling onroad to retry")
-      params.put_bool("ChestnutRetry", True)
-      params.put_bool("OnroadCycleRequested", True)
-    else:
-      params.put_bool("ChestnutActive", model is not None)
+  model_path = stock_modeld_pkl_path(usbgpu)
+  if not (os.path.isfile(model_path) or os.path.isfile(get_manifest_path(model_path))):
+    raise FileNotFoundError(f"Stock model artifact is missing: {model_path}")
 
-  small_model = ModelState(vipc_client_main.width, vipc_client_main.height, False) if model is None or CHESTNUT else None
-  if model is None:
-    model = small_model
-  params.put_bool("ChestnutLoading", False)
-  cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
+  load_started = time.monotonic()
+  cloudlog.warning(f"loading stock model artifact: {model_path}")
+  model = ModelState(vipc_client_main.width, vipc_client_main.height, usbgpu)
+  cloudlog.warning(f"stock model loaded in {time.monotonic() - load_started:.1f}s")
 
-  config_realtime_process(7, 54)
-
-  # messaging
-  pub_socks = ["modelV2", "drivingModelData", "cameraOdometry"] + (["chestnutGpuState"] if CHESTNUT else [])
-  pm = PubMaster(pub_socks)
-  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration", "driverMonitoringState",
-                  "carControl", "controlsState", "lateralDelay"])
-
+  pm = PubMaster(["modelV2", "drivingModelData", "cameraOdometry"])
+  sm = SubMaster(["deviceState", "carState", "narrowRoadCameraState", "extrinsicsCalibration",
+                  "driverMonitoringState", "carControl", "controlsState", "lateralDelay"])
   publish_state = PublishState()
-  params = Params()
-  chestnut_state = ChestnutGpuState(pm, model.chestnut) if CHESTNUT else None
-
-  # setup filter to track dropped frames
   frame_dropped_filter = FirstOrderFilter(0., 10., 1. / ModelConstants.MODEL_RUN_FREQ)
-  frame_id = 0
   last_vipc_frame_id = 0
   run_count = 0
-
   model_transform_main = np.zeros((3, 3), dtype=np.float32)
   model_transform_extra = np.zeros((3, 3), dtype=np.float32)
   extrinsics_calibration_seen = False
   buf_main, buf_extra = None, None
-  meta_main = FrameMeta()
-  meta_extra = FrameMeta()
+  meta_main, meta_extra = FrameMeta(), FrameMeta()
 
   if demo:
     CP = get_demo_car_params()
   else:
     CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
-  cloudlog.info("modeld got CarParams: %s", CP.brand)
-
-  # TODO this needs more thought, use .2s extra for now to estimate other delays
-  # TODO Move smooth seconds to action function
+  cloudlog.info("stock modeld got CarParams: %s", CP.brand)
   long_delay = CP.longitudinalActuatorDelay + LONG_SMOOTH_SECONDS
   prev_action = log.ModelDataV2.Action()
-
-  DH = DesireHelper()
+  desire_helper = DesireHelper()
 
   while True:
-    # Keep receiving frames until we are at least 1 frame ahead of previous extra frame
     while meta_main.timestamp_sof < meta_extra.timestamp_sof + 25000000:
       buf_main = vipc_client_main.recv()
       meta_main = FrameMeta(vipc_client_main)
@@ -343,129 +228,107 @@ def main(demo=False):
         break
 
     if buf_main is None:
-      cloudlog.debug("vipc_client_main no frame")
+      cloudlog.debug("stock modeld main camera has no frame")
       continue
 
     if use_extra_client:
-      # Keep receiving extra frames until frame id matches main camera
       while True:
         buf_extra = vipc_client_extra.recv()
         meta_extra = FrameMeta(vipc_client_extra)
         if buf_extra is None or meta_main.timestamp_sof < meta_extra.timestamp_sof + 25000000:
           break
-
       if buf_extra is None:
-        cloudlog.debug("vipc_client_extra no frame")
+        cloudlog.debug("stock modeld extra camera has no frame")
         continue
-
       if abs(meta_main.timestamp_sof - meta_extra.timestamp_sof) > 10000000:
-        cloudlog.error(f"frames out of sync! main: {meta_main.frame_id} ({meta_main.timestamp_sof / 1e9:.5f}),\
-                         extra: {meta_extra.frame_id} ({meta_extra.timestamp_sof / 1e9:.5f})")
-
+        cloudlog.error(f"stock modeld frames out of sync: main={meta_main.frame_id}, extra={meta_extra.frame_id}")
     else:
-      # Use single camera
-      buf_extra = buf_main
-      meta_extra = meta_main
+      buf_extra, meta_extra = buf_main, meta_main
 
     sm.update(0)
-    desire = DH.desire
     is_rhd = sm["driverMonitoringState"].isRHD
     frame_id = sm["narrowRoadCameraState"].frameId
-    v_ego = max(sm["carState"].vEgo, 0.)
+    v_ego = max(sm["carState"].vEgo, 0.0)
     lat_delay = sm["lateralDelay"].lateralDelay + LAT_SMOOTH_SECONDS
-    if sm.updated["extrinsicsCalibration"] and sm.seen['narrowRoadCameraState'] and sm.seen['deviceState']:
+
+    if (sm.updated["extrinsicsCalibration"] and sm.seen["narrowRoadCameraState"] and
+        sm.seen["deviceState"]):
       device_from_calib_euler = np.array(sm["extrinsicsCalibration"].rpyCalib, dtype=np.float32)
-      dc = DEVICE_CAMERAS[(str(sm['deviceState'].deviceType), str(sm['narrowRoadCameraState'].sensor))]
-      main_intrinsics = dc.wide_road.intrinsics if main_wide_camera else dc.narrow_road.intrinsics
+      device_camera = DEVICE_CAMERAS[(str(sm["deviceState"].deviceType), str(sm["narrowRoadCameraState"].sensor))]
+      main_intrinsics = device_camera.wide_road.intrinsics if main_wide_camera else device_camera.narrow_road.intrinsics
       model_transform_main = get_warp_matrix(device_from_calib_euler, main_intrinsics, False).astype(np.float32)
       has_wide_camera = use_extra_client or main_wide_camera
-      extra_intrinsics = dc.wide_road.intrinsics if has_wide_camera else dc.narrow_road.intrinsics
+      extra_intrinsics = device_camera.wide_road.intrinsics if has_wide_camera else device_camera.narrow_road.intrinsics
       model_transform_extra = get_warp_matrix(device_from_calib_euler, extra_intrinsics, True).astype(np.float32)
       extrinsics_calibration_seen = True
 
     traffic_convention = np.zeros(2)
     traffic_convention[int(is_rhd)] = 1
+    desire_vector = np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
+    if 0 <= desire_helper.desire < ModelConstants.DESIRE_LEN:
+      desire_vector[desire_helper.desire] = 1
 
-    vec_desire = np.zeros(ModelConstants.DESIRE_LEN, dtype=np.float32)
-    if desire >= 0 and desire < ModelConstants.DESIRE_LEN:
-      vec_desire[desire] = 1
-
-    # tracked dropped frames
     vipc_dropped_frames = max(0, meta_main.frame_id - last_vipc_frame_id - 1)
     frames_dropped = frame_dropped_filter.update(min(vipc_dropped_frames, 10))
-    if run_count < 10: # let frame drops warm up
-      frame_dropped_filter.x = 0.
-      frames_dropped = 0.
-    run_count = run_count + 1
-
+    if run_count < 10:
+      frame_dropped_filter.x = 0.0
+      frames_dropped = 0.0
+    run_count += 1
     frame_drop_ratio = frames_dropped / (1 + frames_dropped)
+    prepare_only = vipc_dropped_frames > 0
+    if prepare_only:
+      cloudlog.error(f"stock modeld skipping model eval after dropping {vipc_dropped_frames} frames")
 
-    bufs = {name: buf_extra if 'big' in name else buf_main for name in model.vision_input_names}
-    transforms = {name: model_transform_extra if 'big' in name else model_transform_main for name in model.vision_input_names}
-    frame_delay = DT_MDL # compensate for time passed since the frame was captured: current_time - timestamp_eof is 50ms on average
-    action_delay = DT_MDL / 2 # middle of the interval between model output (current state) and next frame (expected state)
+    bufs = {name: buf_extra if "big" in name else buf_main for name in model.vision_input_names}
+    transforms = {name: model_transform_extra if "big" in name else model_transform_main for name in model.vision_input_names}
+    frame_delay = DT_MDL
+    action_delay = DT_MDL / 2
     lat_action_t = lat_delay + frame_delay + action_delay
     long_action_t = long_delay + frame_delay + action_delay
-    inputs: dict[str, np.ndarray] = {
-      'desire_pulse': vec_desire,
-      'traffic_convention': traffic_convention,
-      'action_t': np.array([lat_action_t, long_action_t], dtype=np.float32),
+    inputs = {
+      "desire_pulse": desire_vector,
+      "traffic_convention": traffic_convention,
+      "action_t": np.array([lat_action_t, long_action_t], dtype=np.float32),
     }
 
-    mt1 = time.perf_counter()
-    try:
-      send_chestnut = (chestnut_state is not None and
-                       run_count % round(ModelConstants.MODEL_RUN_FREQ / SERVICE_LIST['chestnutGpuState'].frequency) == 0)
-      model_output = model.run(bufs, transforms, inputs, chestnut_state.send if send_chestnut else None)
-    except Exception:
-      if not model.chestnut:
-        raise
-      # fallback to small model
-      cloudlog.exception("big model failed, fall back to small")
-      params.put_bool("ChestnutActive", False)
-      model = small_model
-      if chestnut_state is not None:
-        chestnut_state.big = False
-      run_count = 0
-      model_output = None
-    mt2 = time.perf_counter()
-    model_execution_time = mt2 - mt1
+    model_started = time.perf_counter()
+    model_output = model.run(bufs, transforms, inputs, prepare_only)
+    model_execution_time = time.perf_counter() - model_started
 
     if model_output is not None:
-      modelv2_send = messaging.new_message('modelV2')
-      drivingdata_send = messaging.new_message('drivingModelData')
-      posenet_send = messaging.new_message('cameraOdometry')
+      modelv2_send = messaging.new_message("modelV2")
+      drivingdata_send = messaging.new_message("drivingModelData")
+      posenet_send = messaging.new_message("cameraOdometry")
 
-      if not sm['carControl'].latActive:
-        prev_action.desiredCurvature = sm['controlsState'].curvature
+      if not sm["carControl"].latActive:
+        prev_action.desiredCurvature = sm["controlsState"].curvature
       action = get_action_from_model(model_output, prev_action, lat_action_t, long_action_t, v_ego)
       prev_action = action
-      fill_model_msg(modelv2_send, model_output, action,
-                     publish_state, meta_main.frame_id, meta_extra.frame_id, frame_id,
+      fill_model_msg(modelv2_send, model_output, action, publish_state,
+                     meta_main.frame_id, meta_extra.frame_id, frame_id,
                      frame_drop_ratio, meta_main.timestamp_eof, model_execution_time, extrinsics_calibration_seen)
-      modelv2_send.modelV2.big = model.chestnut
-
+      modelv2_send.modelV2.big = False
       desire_state = modelv2_send.modelV2.meta.desireState
-      l_lane_change_prob = desire_state[log.Desire.laneChangeLeft]
-      r_lane_change_prob = desire_state[log.Desire.laneChangeRight]
-      lane_change_prob = l_lane_change_prob + r_lane_change_prob
-      DH.update(sm['carState'], sm['carControl'].latActive, lane_change_prob)
-      modelv2_send.modelV2.meta.laneChangeState = DH.lane_change_state
-      modelv2_send.modelV2.meta.laneChangeDirection = DH.lane_change_direction
-
+      lane_change_prob = desire_state[log.Desire.laneChangeLeft] + desire_state[log.Desire.laneChangeRight]
+      desire_helper.update(sm["carState"], sm["carControl"].latActive, lane_change_prob)
+      modelv2_send.modelV2.meta.laneChangeState = desire_helper.lane_change_state
+      modelv2_send.modelV2.meta.laneChangeDirection = desire_helper.lane_change_direction
       fill_driving_model_data(drivingdata_send, modelv2_send)
-      fill_pose_msg(posenet_send, model_output, meta_main.frame_id, vipc_dropped_frames, meta_main.timestamp_eof, extrinsics_calibration_seen)
-      pm.send('modelV2', modelv2_send)
-      pm.send('drivingModelData', drivingdata_send)
-      pm.send('cameraOdometry', posenet_send)
+      fill_pose_msg(posenet_send, model_output, meta_main.frame_id, vipc_dropped_frames,
+                    meta_main.timestamp_eof, extrinsics_calibration_seen)
+      pm.send("modelV2", modelv2_send)
+      pm.send("drivingModelData", drivingdata_send)
+      pm.send("cameraOdometry", posenet_send)
+
     last_vipc_frame_id = meta_main.frame_id
+
 
 if __name__ == "__main__":
   try:
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--demo', action='store_true', help='A boolean for demo mode.')
-    args = parser.parse_args()
+    argument_parser = argparse.ArgumentParser()
+    argument_parser.add_argument("--demo", action="store_true", help="Run modeld in demo mode")
+    args = argument_parser.parse_args()
     main(demo=args.demo)
   except KeyboardInterrupt:
     cloudlog.warning("got SIGINT")
