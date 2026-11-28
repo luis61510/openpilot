@@ -69,9 +69,15 @@ class AsyncTaskRunner:
 
 
 class CerealOutgoingMessageProxy(AsyncTaskRunner):
+  # Map OpenView's legacy service names to this branch's renamed Cereal services.
+  SERVICE_ALIASES = {
+    "liveCalibration": "extrinsicsCalibration",
+    "roadCameraState": "narrowRoadCameraState",
+  }
   def __init__(self, services: list[str], enabled: bool = True):
     super().__init__()
-    self.services = list(services)
+    self.output_service_names = {self.SERVICE_ALIASES.get(service, service): service for service in services}
+    self.services = list(self.output_service_names)
     self.sm = messaging.SubMaster(self.services)
     self.channels = []
     self._enabled = enabled
@@ -102,7 +108,7 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
         continue
       msg_dict = self.to_json(self.sm[service])
       mono_time, valid = self.sm.logMonoTime[service], self.sm.valid[service]
-      outgoing_msg = {"type": service, "logMonoTime": mono_time, "valid": valid, "data": msg_dict}
+      outgoing_msg = {"type": self.output_service_names.get(service, service), "logMonoTime": mono_time, "valid": valid, "data": msg_dict}
       encoded_msg = json.dumps(outgoing_msg).encode()
       for channel in self.channels:
         if not channel.is_open():
