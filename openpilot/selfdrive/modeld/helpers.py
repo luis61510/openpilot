@@ -2,6 +2,8 @@ import sys
 import time
 from pathlib import Path
 
+from openpilot.common.hardware.hw import Paths
+
 from openpilot.common.hardware import AGNOS
 from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, USB_DEVICES_PATH, is_chestnut_usb_id
 
@@ -9,6 +11,24 @@ MODELS_DIR = Path(__file__).resolve().parent / 'models'
 
 
 def modeld_pkl_path(chestnut: bool):
+  # Custom bundles are activated only after the model manager has completed
+  # download and SHA256 verification. Keep the compiled model as the explicit
+  # default when the corresponding slot has no custom selection.
+  from openpilot.common.params import Params
+  from openpilot.sunnypilot.models.helpers import get_selected_bundle
+
+  source = "chestnut" if chestnut else "qcom"
+  bundle = get_selected_bundle(Params(), source)
+  if bundle is not None:
+    artifacts = [model.artifact.fileName for model in bundle.models
+                 if model.artifact.fileName and model.artifact.fileName.endswith(".pkl")]
+    if not artifacts:
+      raise RuntimeError(f"Selected {source} model bundle {bundle.ref} has no Tinygrad .pkl artifact")
+    model_path = Path(Paths.model_root()) / artifacts[0]
+    if not model_path.is_file():
+      raise FileNotFoundError(f"Selected {source} model artifact is missing: {model_path}")
+    return model_path
+
   prefix = 'big_' if chestnut else ''
   return MODELS_DIR / f'{prefix}driving_tinygrad.pkl'
 
@@ -39,6 +59,13 @@ def wait_for_chestnut(timeout: float = 10.) -> None:
     time.sleep(0.1)
 
 def chestnut_compiled() -> bool:
-  path = modeld_pkl_path(chestnut=True)
-  return path.is_file() and all(
+  # The compiled default bundle and downloaded custom bundles share the same
+  # warp kernels. A selected custom artifact is usable when those kernels exist.
+  warp_files_present = all(
     (MODELS_DIR / f'big_driving_warp_{size}_tinygrad.pkl').is_file() for size in ('1344x760', '1928x1208'))
+  if not warp_files_present:
+    return False
+  try:
+    return modeld_pkl_path(chestnut=True).is_file()
+  except (FileNotFoundError, RuntimeError):
+    return False
