@@ -9,7 +9,7 @@ WEBRTCD_PORT = 5001
 class StreamRequestBody:
   sdp: str
   cameras: list[str]
-  enabled: bool
+  enabled: bool = True
   bridge_services_in: list[str] = field(default_factory=list)
   bridge_services_out: list[str] = field(default_factory=list)
 
