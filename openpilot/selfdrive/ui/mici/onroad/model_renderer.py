@@ -10,7 +10,8 @@ from openpilot.selfdrive.controls.radard import RADAR_TO_CAMERA
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
-from openpilot.system.ui.lib.application import gui_app
+from openpilot.system.ui.lib.application import gui_app, FontWeight
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
 from openpilot.system.ui.widgets import Widget
 
@@ -48,6 +49,7 @@ class ModelPoints:
 class LeadVehicle:
   def __init__(self):
     self.bar = np.empty((0, 2), dtype=np.float32)
+    self.distance = 0.0
     self.d_filter = FirstOrderFilter(0.0, 0.2, 1 / gui_app.target_fps, initialized=False)
     self.y_filter = FirstOrderFilter(0.0, 0.2, 1 / gui_app.target_fps, initialized=False)
     self.fade_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
@@ -63,6 +65,7 @@ class ModelRenderer(Widget):
     self._lane_line_probs = np.zeros(4, dtype=np.float32)
     self._road_edge_stds = np.zeros(2, dtype=np.float32)
     self._lead_vehicles = [LeadVehicle(), LeadVehicle()]
+    self._lead_distance_font = gui_app.font(FontWeight.SEMI_BOLD)
     self._path_offset_z = HEIGHT_INIT[0]
 
     # Initialize ModelPoints objects
@@ -148,6 +151,7 @@ class ModelRenderer(Widget):
     if render_lead_indicator:
       self._update_leads(sm)
       self._draw_lead_indicator()
+      self._draw_lead_distance(rect)
     else:
       self._lead_vehicles = [LeadVehicle(), LeadVehicle()]
 
@@ -189,7 +193,10 @@ class ModelRenderer(Widget):
         lead.d_filter.initialized = lead.y_filter.initialized = False
       lead.fade_filter.update(opacity if visible else 0.0)
       if visible:
+        lead.distance = d_rel
         lead.bar = self._get_lead_bar(lane, lead.d_filter.update(d_rel), lead.y_filter.update(y_rel))
+      else:
+        lead.distance = 0.0
 
   def _get_lead_bar(self, lane, d_rel, y_rel):
     # bar on the road behind the lead, following the lane
@@ -368,6 +375,27 @@ class ModelRenderer(Widget):
     offset = np.array([self._rect.x, self._rect.y], dtype=np.float32)
     for lead in self._lead_vehicles:
       draw_polygon(self._rect, lead.bar + offset, rl.Color(255, 255, 255, int(255 * lead.fade_filter.x)))
+
+  def _draw_lead_distance(self, rect: rl.Rectangle):
+    """Show only the first lead vehicle distance above its road marker."""
+    lead = self._lead_vehicles[0]
+    if lead.distance <= 0.0 or lead.fade_filter.x <= 0.01 or lead.bar.size == 0:
+      return
+
+    distance = lead.distance if ui_state.is_metric else lead.distance * 3.28084
+    label = f"{distance:.0f}"
+    font_size = 32
+    text_width = measure_text_cached(self._lead_distance_font, label, font_size, 0).x
+    center_x = float(np.mean(lead.bar[:, 0])) + rect.x
+    top_y = float(np.min(lead.bar[:, 1])) + rect.y
+    x = int(np.clip(center_x - text_width / 2, rect.x + 12, rect.x + rect.width - text_width - 12))
+    y = max(int(rect.y + 12), int(top_y - font_size - 8))
+
+    alpha = int(255 * np.clip(lead.fade_filter.x, 0.0, 1.0))
+    shadow = rl.Color(0, 0, 0, int(200 * alpha / 255))
+    color = rl.Color(255, 255, 255, alpha)
+    rl.draw_text_ex(self._lead_distance_font, label, rl.Vector2(x + 2, y + 2), font_size, 0, shadow)
+    rl.draw_text_ex(self._lead_distance_font, label, rl.Vector2(x, y), font_size, 0, color)
 
   @staticmethod
   def _get_path_length_idx(pos_x_array: np.ndarray, path_height: float) -> int:
