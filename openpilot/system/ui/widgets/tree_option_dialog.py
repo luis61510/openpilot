@@ -66,6 +66,7 @@ class TreeOptionDialog(MultiOptionDialog):
     super().__init__(title, [], "", callback=on_exit)
     self.folders = folders
     self.selection_ref = current_ref
+    self._initial_ref = current_ref
     self.fav_param = fav_param
     self.params = Params()
     raw_favorites = self.params.get(fav_param) if fav_param else None
@@ -184,7 +185,7 @@ class TreeOptionDialog(MultiOptionDialog):
     self.select_button.render(rl.Rectangle(dialog.x + 100 + button_width, button_y, button_width, 150))
 
   def _current_ref(self):
-    return getattr(self, "_initial_ref", self.selection_ref)
+    return self._initial_ref
 
   def _set_result(self, result):
     gui_app.pop_widget()
