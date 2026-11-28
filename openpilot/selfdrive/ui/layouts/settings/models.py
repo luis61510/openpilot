@@ -255,7 +255,7 @@ class ModelsLayout(Widget):
     self._small_item.set_enabled(offroad)
     self._big_item.set_enabled(offroad)
     self._refresh_item.set_enabled(offroad and not self._refreshing())
-    self._clear_cache_item.set_enabled(offroad and not self.params.get_bool("ModelManager_ClearCache"))
+    self._clear_cache_item.set_enabled(offroad and download_ref is None and not self.params.get_bool("ModelManager_ClearCache"))
 
     if time.monotonic() - self._last_cache_refresh > 1.0:
       self._last_cache_refresh = time.monotonic()
