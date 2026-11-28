@@ -32,7 +32,7 @@ from openpilot.selfdrive.modeld.parse_model_outputs import Parser
 from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg, fill_driving_model_data, fill_pose_msg, PublishState
 from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
 from openpilot.selfdrive.modeld.helpers import stock_modeld_pkl_path, get_tg_input_devices, usbgpu_present
-from openpilot.common.file_chunker import read_file_chunked, get_manifest_path
+from openpilot.common.file_chunker import read_file_chunked, get_manifest_path, get_existing_chunks
 
 PROCESS_NAME = "selfdrive.modeld.modeld"
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
@@ -157,7 +157,11 @@ def main(demo=False):
 
   gpu_present = usbgpu_present()
   gpu_artifact = stock_modeld_pkl_path(usbgpu=True)
-  gpu_compiled = os.path.isfile(gpu_artifact) or os.path.isfile(get_manifest_path(gpu_artifact))
+  try:
+    get_existing_chunks(gpu_artifact)
+    gpu_compiled = True
+  except (OSError, ValueError):
+    gpu_compiled = False
   usbgpu = gpu_present and gpu_compiled
   params = Params()
   params.put_bool("UsbGpuPresent", gpu_present)
@@ -190,8 +194,10 @@ def main(demo=False):
     cloudlog.warning(f"connected extra cam: {vipc_client_extra.width} x {vipc_client_extra.height}")
 
   model_path = stock_modeld_pkl_path(usbgpu)
-  if not (os.path.isfile(model_path) or os.path.isfile(get_manifest_path(model_path))):
-    raise FileNotFoundError(f"Stock model artifact is missing: {model_path}")
+  try:
+    get_existing_chunks(model_path)
+  except (OSError, ValueError) as e:
+    raise FileNotFoundError(f"Stock model artifact is missing or incomplete: {model_path}") from e
 
   load_started = time.monotonic()
   cloudlog.warning(f"loading stock model artifact: {model_path}")
