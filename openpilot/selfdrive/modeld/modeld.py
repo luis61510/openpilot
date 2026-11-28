@@ -32,7 +32,7 @@ from openpilot.selfdrive.modeld.parse_model_outputs import Parser
 from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg, fill_driving_model_data, fill_pose_msg, PublishState
 from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
 from openpilot.selfdrive.modeld.helpers import stock_modeld_pkl_path, get_tg_input_devices, usbgpu_present
-from openpilot.common.file_chunker import read_file_chunked, get_manifest_path, get_existing_chunks
+from openpilot.common.file_chunker import read_file_chunked, get_existing_chunks
 
 PROCESS_NAME = "selfdrive.modeld.modeld"
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
