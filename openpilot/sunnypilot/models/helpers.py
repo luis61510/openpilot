@@ -13,7 +13,7 @@ from openpilot.cereal import custom
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.hardware.hw import Paths
-from openpilot.selfdrive.modeld.helpers import chestnut_present
+from openpilot.selfdrive.modeld.helpers import chestnut_compiled, chestnut_present
 
 # SET ME TO THE EXACT JSON VERSION WE SET IN SUNNYPILOT_MODELS REPO
 REQUIRED_JSON_VERSION = 21
@@ -173,6 +173,10 @@ def get_active_model_runner(params: Params | None = None, force_check: bool = Fa
   runner_type = custom.ModelManagerSP.Runner.stock
   if active_bundle := get_active_bundle(params):
     runner_type = active_bundle.runner.raw
+  elif chestnut_present() and chestnut_compiled():
+    # The built-in Chestnut artifact is a Tinygrad model even when no custom
+    # bundle is selected. Route it through the Chestnut-aware runtime.
+    runner_type = custom.ModelManagerSP.Runner.tinygrad
 
   if cached_runner_type != runner_type:
     params.put("ModelRunnerTypeCache", int(runner_type), block=True)
