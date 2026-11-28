@@ -1,5 +1,3 @@
-import time
-
 from openpilot.cereal import custom
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.ui_state import ui_state
