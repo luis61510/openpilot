@@ -98,6 +98,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"ModelManager_ModelsCache", {PERSISTENT, JSON}},
     {"ModelManager_ModelsCache_Chestnut", {PERSISTENT, JSON}},
     {"ModelRunnerTypeCache", {CLEAR_ON_ONROAD_TRANSITION, INT}},
+    {"UsbGpuPresent", {CLEAR_ON_MANAGER_START, BOOL}},
+    {"UsbGpuCompiled", {CLEAR_ON_MANAGER_START, BOOL}},
     {"NavigationEnabled", {PERSISTENT, BOOL, "0"}},
     {"NavDestination", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, JSON}},
     {"NetworkMetered", {PERSISTENT, BOOL}},
