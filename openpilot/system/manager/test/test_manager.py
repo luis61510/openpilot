@@ -8,6 +8,9 @@ import time
 from opendbc.car.structs import car
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.common.params import Params
+from openpilot.cereal import custom
+import openpilot.system.manager.process_config as process_config
+from openpilot.system.manager.process import PythonProcess
 import openpilot.system.manager.manager as manager
 from openpilot.system.manager.process import ensure_running
 from openpilot.system.manager.process_config import managed_processes, procs
@@ -32,6 +35,56 @@ class TestManager(OpenpilotTestCase):
 
   def test_duplicate_procs(self):
     assert len(procs) == len(managed_processes), "Duplicate process names"
+
+  def test_model_runner_dispatch(self, monkeypatch):
+    CP = car.CarParams.new_message()
+    params = Params()
+
+    monkeypatch.setattr(process_config, "get_active_model_runner",
+                        lambda _params, force_check=False: custom.ModelManagerSP.Runner.stock)
+    assert process_config.is_stock_model(True, params, CP)
+    assert not process_config.is_tinygrad_model(True, params, CP)
+
+    monkeypatch.setattr(process_config, "get_active_model_runner",
+                        lambda _params, force_check=False: custom.ModelManagerSP.Runner.tinygrad)
+    assert not process_config.is_stock_model(True, params, CP)
+    assert process_config.is_tinygrad_model(True, params, CP)
+
+  def test_exited_process_uses_bounded_restart_backoff(self):
+    class DeadProcess:
+      exitcode = 1
+      pid = 12345
+
+      @staticmethod
+      def is_alive():
+        return False
+
+    params = Params()
+    CP = car.CarParams.new_message()
+    process = PythonProcess("restart_test", "unused.module", lambda *_: True)
+    process.proc = DeadProcess()
+    process.started_at = time.monotonic() - 10
+    process.start = lambda: setattr(process, "started", True)
+
+    ensure_running([process], True, params, CP)
+    assert process.proc is None
+    assert process.restart_count == 1
+    assert process.restart_at > time.monotonic()
+    assert not getattr(process, "started", False)
+
+    process.restart_at = 0
+    ensure_running([process], True, params, CP)
+    assert getattr(process, "started", False)
+
+  def test_stock_runner_device_map_and_artifact_names(self):
+    from openpilot.selfdrive.modeld.helpers import get_tg_input_devices, stock_modeld_pkl_path
+
+    default_devices = get_tg_input_devices("selfdrive.modeld.modeld", False)
+    usbgpu_devices = get_tg_input_devices("selfdrive.modeld.modeld", True)
+    assert default_devices == {"WARP_DEV": "QCOM", "QUEUE_DEV": "QCOM"}
+    assert usbgpu_devices == {"WARP_DEV": "QCOM", "QUEUE_DEV": "AMD"}
+    assert stock_modeld_pkl_path(False).name == "driving_tinygrad.pkl"
+    assert stock_modeld_pkl_path(True).name == "big_driving_tinygrad.pkl"
 
   def test_blacklisted_procs(self):
     # TODO: ensure there are blacklisted procs until we have a dedicated test
