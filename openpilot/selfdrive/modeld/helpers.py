@@ -1,3 +1,4 @@
+import json
 import sys
 import time
 from pathlib import Path
@@ -8,6 +9,38 @@ from openpilot.common.hardware import AGNOS
 from openpilot.common.hardware.usb import CHESTNUT_USB_PRODUCT, USB_DEVICES_PATH, is_chestnut_usb_id
 
 MODELS_DIR = Path(__file__).resolve().parent / 'models'
+TG_INPUT_DEVICES_PATH = MODELS_DIR / 'tg_input_devices.json'
+USBGPU_VID = 0xADD1
+USBGPU_PID = 0x0001
+
+
+def stock_modeld_pkl_path(usbgpu: bool = False) -> Path:
+  """Return the built-in stock model artifact, separate from user-selected bundles."""
+  prefix = 'big_' if usbgpu else ''
+  return MODELS_DIR / f'{prefix}driving_tinygrad.pkl'
+
+
+def get_tg_input_devices(process_name: str, usbgpu: bool) -> dict[str, str]:
+  with TG_INPUT_DEVICES_PATH.open() as f:
+    devices = json.load(f)
+  process_devices = devices.get(process_name)
+  if process_devices is None:
+    raise KeyError(f"No Tinygrad input-device configuration for {process_name}")
+  selected = process_devices.get('usbgpu' if usbgpu else 'default')
+  if not isinstance(selected, dict) or not {'WARP_DEV', 'QUEUE_DEV'} <= selected.keys():
+    raise ValueError(f"Invalid Tinygrad input-device configuration for {process_name}")
+  return selected
+
+
+def usbgpu_present() -> bool:
+  for device in Path("/sys/bus/usb/devices").glob("*"):
+    try:
+      if int((device / "idVendor").read_text(), 16) == USBGPU_VID and \\
+          int((device / "idProduct").read_text(), 16) == USBGPU_PID:
+        return True
+    except (OSError, ValueError):
+      continue
+  return False
 
 
 def modeld_pkl_path(chestnut: bool):
