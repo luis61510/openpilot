@@ -250,7 +250,7 @@ def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params: Par
         exit_code = p.stop(block=True)
         if runtime >= 60:
           p.restart_count = 0
-        p.restart_count += 1
+        p.restart_count = min(p.restart_count + 1, 7)
         delay = min(5 * (2 ** (p.restart_count - 1)), 300)
         p.restart_at = now + delay
         cloudlog.error(f"{p.name} exited unexpectedly (code={exit_code}); restarting in {delay}s (attempt {p.restart_count})")
