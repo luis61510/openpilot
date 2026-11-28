@@ -18,3 +18,10 @@ Params	注册 ActiveBundle、ActiveBundleChestnut、DownloadRef、ModelsCache、
 modeld 动态加载	根据小模型/大模型各自的 ActiveBundle，定位对应 .pkl 文件
 默认回退	未选择自定义模型时，继续使用原有编译模型
 Runner 校验	当前清单的 106 个模型全部是 Tinygrad Runner；加载前增加 Runner 类型检查
+
+
+1. 移植官方 Stock 模型运行入口及其缺失依赖。
+2. 将现有 Chestnut / AMD eGPU 模型加载实现保留为独立 Tinygrad 运行入口。
+3. 移植官方 Runner 判断和 `process_config.py` 动态分流。
+4. 检查默认小模型、默认大模型、非默认小模型、非默认大模型四条加载路径。
+5. 验证切换、取消、缓存、异常恢复和进程重启行为。
