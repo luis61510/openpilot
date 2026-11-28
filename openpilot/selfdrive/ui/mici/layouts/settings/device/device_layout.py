@@ -13,7 +13,8 @@ from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButto
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigConfirmationDialog
 from openpilot.selfdrive.ui.mici.onroad.cabin_camera_dialog import CabinCameraDialog
 from openpilot.selfdrive.ui.mici.layouts.onboarding import TrainingGuide, TermsPage
-from openpilot.system.ui.lib.application import gui_app, MousePos
+from openpilot.system.ui.lib.application import gui_app, MousePos, TextAlignment
+from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.system.ui.widgets.html_render import HtmlRenderer
@@ -94,6 +95,79 @@ class DeviceInfoLayoutMici(InfoLayoutMici):
   def __init__(self):
     params = Params()
     super().__init__("device ID", params.get("DongleId") or 'N/A', "serial", params.get("HardwareSerial") or 'N/A', width=380)
+
+
+class ChestnutGpuInfoLayout(Widget):
+  """Live Chestnut eGPU telemetry shown in Device settings."""
+
+  NORMAL_FONT_SIZE = 27
+  ALERT_FONT_SIZE = NORMAL_FONT_SIZE * 2
+
+  def __init__(self):
+    super().__init__()
+    self.set_rect(rl.Rectangle(0, 0, 360, 400))
+    self._title = UnifiedLabel("Chestnut eGPU monitor", 38, max_width=340, font_weight=FontWeight.DISPLAY, wrap_text=False)
+    self._status = UnifiedLabel("Waiting for Chestnut...", 27, max_width=340, font_weight=FontWeight.ROMAN, wrap_text=False)
+    self._metric_labels = [
+      UnifiedLabel("", self.NORMAL_FONT_SIZE, max_width=175, font_weight=FontWeight.ROMAN, wrap_text=False)
+      for _ in range(7)
+    ]
+    self._metric_values = [
+      UnifiedLabel("", self.NORMAL_FONT_SIZE, max_width=165, alignment=TextAlignment.RIGHT,
+                   font_weight=FontWeight.ROMAN, wrap_text=False)
+      for _ in range(7)
+    ]
+
+  def _render(self, _):
+    x = self._rect.x + 20
+    y = self._rect.y
+    self._title.set_position(x, y)
+    self._title.render()
+
+    sm = ui_state.sm
+    chestnut = sm["chestnutState"]
+    telemetry_valid = (sm.alive["chestnutState"] and sm.valid["chestnutState"] and
+                       sm.seen["chestnutState"] and chestnut.tempC > 0)
+
+    if not ui_state.chestnut_present:
+      self._status.set_text("Chestnut eGPU not detected")
+      rows = []
+    elif not telemetry_valid:
+      self._status.set_text("GPU telemetry unavailable - activate the Chestnut big model")
+      rows = []
+    else:
+      self._status.set_text("Live GPU telemetry")
+      rows = [
+        ("GPU edge temp", f"{chestnut.tempC:.0f}°C", chestnut.tempC > 75),
+        ("VRAM temp", f"{chestnut.memoryTempC:.0f}°C", chestnut.memoryTempC > 87),
+        ("GPU usage", f"{chestnut.gpuUsagePercent:d}%", chestnut.gpuUsagePercent > 70),
+        ("GPU clock", f"{chestnut.gpuClockMhz:d}MHz", False),
+        ("Power draw", f"{chestnut.powerDrawW:.0f}/{chestnut.powerLimitW:.0f}W", False),
+        ("Fan speed", f"{chestnut.fanSpeedRpm:d}RPM", chestnut.fanSpeedRpm > 1500),
+        ("12V rail", f"{chestnut.supplyVoltage / 1000:.1f}V {chestnut.supplyCurrent / 1000:.1f}A", False),
+      ]
+
+    self._status.set_position(x, y + 48)
+    self._status.render()
+    row_y = y + 92
+    for i, (name_label, value_label) in enumerate(zip(self._metric_labels, self._metric_values, strict=True)):
+      if i < len(rows):
+        name, value, alert = rows[i]
+        font_size = self.ALERT_FONT_SIZE if alert else self.NORMAL_FONT_SIZE
+        name_label.set_text(name)
+        value_label.set_text(value)
+        value_label.set_font_size(font_size)
+        value_label.set_text_color(rl.RED if alert else rl.WHITE)
+        name_label.set_position(x, row_y)
+        value_label.set_position(x + 175, row_y)
+        name_label.render()
+        value_label.render()
+        row_y += max(34, font_size + 4)
+      else:
+        name_label.set_text("")
+        value_label.set_text("")
+        value_label.set_font_size(self.NORMAL_FONT_SIZE)
+        value_label.set_text_color(rl.WHITE)
 
 
 class PairBigButton(BigButton):
@@ -194,6 +268,7 @@ class DeviceLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       DeviceInfoLayoutMici(),
+      ChestnutGpuInfoLayout(),
       self._pairing_button,
       review_training_guide_btn,
       cabin_cam_btn,

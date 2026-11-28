@@ -186,8 +186,43 @@ class HudRenderer(Widget):
       self._draw_set_speed(rect)
 
     self._draw_model_source(rect)
+    self._draw_chestnut_telemetry(rect)
 
     self._draw_steering_wheel(rect)
+
+  def _draw_chestnut_telemetry(self, rect: rl.Rectangle) -> None:
+    """Show four Chestnut eGPU metrics, highlighting threshold exceedances in red."""
+    if not ui_state.chestnut_present:
+      return
+
+    sm = ui_state.sm
+    chestnut = sm["chestnutState"]
+    telemetry_valid = (sm.alive["chestnutState"] and sm.valid["chestnutState"] and
+                       sm.seen["chestnutState"] and chestnut.tempC > 0)
+    if not telemetry_valid:
+      return
+
+    metrics = (
+      (f"{chestnut.tempC:.0f}°", chestnut.tempC > 75),
+      (f"{chestnut.memoryTempC:.0f}°", chestnut.memoryTempC > 87),
+      (f"{chestnut.gpuUsagePercent:d}%", chestnut.gpuUsagePercent > 70),
+      (f"{chestnut.fanSpeedRpm:d}", chestnut.fanSpeedRpm > 1500),
+    )
+    normal_font_size = 23
+    alert_font_size = normal_font_size * 2
+    line_heights = [alert_font_size + 13 if alert else normal_font_size + 13 for _, alert in metrics]
+    total_height = sum(line_heights)
+    right_x = rect.x + rect.width - 28
+    start_y = rect.y + (rect.height - total_height) / 2
+
+    text_y = start_y
+    for (value, alert), line_height in zip(metrics, line_heights, strict=True):
+      font_size = alert_font_size if alert else normal_font_size
+      color = rl.Color(255, 65, 65, 255) if alert else rl.Color(255, 255, 255, 255)
+      text_width = measure_text_cached(self._font_semi_bold, value, font_size).x
+      text_x = right_x - text_width
+      rl.draw_text_ex(self._font_semi_bold, value, rl.Vector2(text_x, text_y), font_size, 0, color)
+      text_y += line_height
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     loading = ui_state.chestnut_state == ChestnutState.LOADING
