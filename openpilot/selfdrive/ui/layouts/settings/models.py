@@ -251,8 +251,6 @@ class ModelsLayout(Widget):
     self._small_item.action_item.set_value(self._slot_description("qcom"))
     self._big_item.action_item.set_value(self._slot_description("chestnut"))
     self._active_item.action_item.set_text(self._active_model_name())
-    self._cache_item.action_item.set_text(self._cache_size_text())
-
     bundle = self._selected_bundle()
     artifacts = [model.artifact for model in bundle.models if model.artifact.fileName] if bundle else []
     for i, item in enumerate(self._artifact_items):
