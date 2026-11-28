@@ -260,6 +260,9 @@ def ensure_running(procs: ValuesView[ManagerProcess], started: bool, params: Par
           p.start()
         else:
           cloudlog.warning(f"{p.name} restart backoff: {max(1, int(p.restart_at - now))}s remaining")
+      elif p.shutting_down:
+        # The run condition became true again before the previous stop completed.
+        p.start()
     else:
       p.start()
 
